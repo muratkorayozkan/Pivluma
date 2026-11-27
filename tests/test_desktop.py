@@ -1,3 +1,4 @@
+import csv
 import os
 import sqlite3
 import tempfile
@@ -85,6 +86,25 @@ class DashboardTests(unittest.TestCase):
             self.assertIn("Disconnected", window.market_status.text())
         finally:
             window.close()
+
+    def test_export_csv_uses_the_active_forecast_horizon(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "forecast.csv"
+            window = Dashboard(Path(directory) / "unused.sqlite3")
+            try:
+                window.horizon.setValue(3)
+                with patch("pivluma.desktop.QFileDialog.getSaveFileName",
+                           return_value=(str(path), "")):
+                    window.export_forecast()
+                with path.open(encoding="utf-8-sig", newline="") as stream:
+                    rows = list(csv.DictReader(stream))
+                self.assertEqual([row["step"] for row in rows], ["1", "2", "3"])
+                self.assertEqual(rows[0]["last_observed_date"], str(window.prices[-1].day))
+                self.assertEqual(float(rows[-1]["forecast"]), window.chart.result.forecast[-1])
+                self.assertEqual(float(rows[-1]["lower"]), window.chart.result.lower[-1])
+                self.assertEqual(float(rows[-1]["upper"]), window.chart.result.upper[-1])
+            finally:
+                window.close()
 
     def test_csv_import_persists_and_saved_series_loads(self):
         with tempfile.TemporaryDirectory() as directory:

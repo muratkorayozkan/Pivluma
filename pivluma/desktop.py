@@ -1,5 +1,6 @@
 """Offline market-analysis dashboard."""
 
+import csv
 import sqlite3
 import sys
 from contextlib import closing
@@ -122,6 +123,9 @@ class Dashboard(QMainWindow):
         self.metrics = QLabel()
         self.metrics.setWordWrap(True)
         layout.addWidget(self.metrics)
+        export = QPushButton("Export forecast CSV")
+        export.clicked.connect(self.export_forecast)
+        layout.addWidget(export, alignment=Qt.AlignmentFlag.AlignLeft)
         analyst_title = QLabel("Local analyst")
         layout.addWidget(analyst_title)
         analyst_controls = QHBoxLayout()
@@ -276,6 +280,28 @@ class Dashboard(QMainWindow):
     def ask_analyst(self):
         self.reply.setText(answer(self.question.text(), self.series_label, self.prices,
                                   self.chart.result))
+
+    def export_forecast(self):
+        filename, _ = QFileDialog.getSaveFileName(self, "Export forecast", "forecast.csv",
+                                                   "CSV files (*.csv)")
+        if not filename:
+            return
+        path = Path(filename)
+        if not path.suffix:
+            path = path.with_suffix(".csv")
+        result = self.chart.result
+        try:
+            with path.open("w", encoding="utf-8-sig", newline="") as stream:
+                writer = csv.writer(stream)
+                writer.writerow(("last_observed_date", "step", "forecast", "lower", "upper"))
+                for step, (forecast, lower, upper) in enumerate(
+                    zip(result.forecast, result.lower, result.upper), 1
+                ):
+                    writer.writerow((self.prices[-1].day, step, forecast, lower, upper))
+        except OSError as error:
+            self.status.setText(f"Could not export forecast: {error}")
+            return
+        self.status.setText(f"Forecast exported to {path}")
 
     def refresh(self):
         closes = [price.close for price in self.prices]
