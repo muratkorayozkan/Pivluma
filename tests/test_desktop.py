@@ -160,6 +160,29 @@ class DashboardTests(unittest.TestCase):
             delete(window)
             self.application.processEvents()
 
+    def test_compact_dashboard_keeps_the_chart_and_text_separate(self):
+        window = Dashboard(Path("unused.sqlite3"))
+        try:
+            window.update_button.show()
+            window.update_label.setText("Checking and preparing updates…")
+            window.update_label.show()
+            window.language_picker.setCurrentIndex(1)
+            window.set_history_warning("Twelve Data · History request failed. Check connection and account access.")
+            window.ask_topic("What is the forecast?")
+            window.resize(760, 680)
+            window.show()
+            self.application.processEvents()
+            chart = window.chart.geometry()
+            self.assertLess(chart.bottom(), window.chart_legend.geometry().top())
+            self.assertLess(chart.bottom(), window.metrics.geometry().top())
+            self.assertGreater(window.scroll_area.verticalScrollBar().maximum(), 0)
+            window.scroll_area.ensureWidgetVisible(window.reply)
+            self.assertGreater(window.scroll_area.verticalScrollBar().value(), 0)
+        finally:
+            window.close()
+            delete(window)
+            self.application.processEvents()
+
     def test_csv_import_persists_and_saved_series_loads(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)

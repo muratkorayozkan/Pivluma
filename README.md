@@ -4,7 +4,7 @@ Pivluma is a Windows desktop application in development for financial forecastin
 
 ## Current release
 
-[Pivluma 0.6.0](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.6.0) is the current release. Download the [portable Windows x64 ZIP](https://github.com/muratkorayozkan/Pivluma/releases/latest), extract it, and run Pivluma.exe.
+[Pivluma 0.6.1](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.6.1) is the current release. Download the [portable Windows x64 ZIP](https://github.com/muratkorayozkan/Pivluma/releases/latest), extract it, and run Pivluma.exe.
 
 The Python forecasting engine fits a rolling linear trend to the latest 20 observations. Walk-forward evaluation compares mean absolute error with a last-price baseline. Forecast intervals use empirical errors for each forecast step.
 
@@ -25,6 +25,8 @@ The dashboard opens with synthetic data and shows recent closing prices, the for
 
 Use the **Language** menu to switch between **EN · English** and **TR · Türkçe**. The selected language is remembered on this PC. Switching keeps the active prices and forecast horizon.
 
+The dashboard scrolls vertically when the controls, chart, and analyst response exceed the window height.
+
 ## Automatic updates on Windows
 
 Install version 0.5.0 or newer once from the Windows ZIP on GitHub Releases. The portable executable checks for the latest stable release in the background. If a newer Windows ZIP is available, Pivluma verifies the GitHub asset's SHA-256 digest and size before preparing the package under the Windows application data directory.
@@ -43,7 +45,7 @@ python -m venv .venv
 .\scripts\build-windows.ps1 -Python .\.venv\Scripts\python.exe
 ```
 
-The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.6.0-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
+The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.6.1-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
 
 
 ## Connect live market data

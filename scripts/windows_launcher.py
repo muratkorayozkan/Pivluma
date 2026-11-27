@@ -24,7 +24,12 @@ def smoke_test() -> int:
         window.language_picker.setCurrentIndex(1)
         window.question.setText("Tahmin ne?")
         window.ask_analyst()
+        window.resize(760, 680)
+        application.processEvents()
+        chart_clear = window.chart.geometry().bottom() < window.chart_legend.geometry().top()
         return int(
+            not chart_clear or window.scroll_area.verticalScrollBar().maximum() <= 0
+            or
             window.windowIcon().isNull() or window.chart.grab().isNull()
             or "7 observations ahead" not in english_reply or "7 gözlem" not in window.reply.text()
         )

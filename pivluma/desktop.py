@@ -8,10 +8,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from PySide6.QtCore import QPointF, QProcess, QRectF, QSettings, QStandardPaths, Qt, QTimer
-from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPolygonF
+from PySide6.QtGui import QColor, QFontMetricsF, QIcon, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow,
-    QPushButton, QSpinBox, QVBoxLayout, QWidget,
+    QPushButton, QScrollArea, QSpinBox, QVBoxLayout, QWidget,
 )
 
 from pivluma import __version__
@@ -38,7 +38,6 @@ class PriceChart(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.fillRect(self.rect(), QColor("#141d2b"))
-        chart = QRectF(76, 18, self.width() - 100, self.height() - 52)
         history = self.history[-120:]
         result = self.result
         lower = min(history + list(result.lower))
@@ -46,20 +45,30 @@ class PriceChart(QWidget):
         padding = (upper - lower) * .08 or max(upper * .01, .001)
         lower -= padding
         upper += padding
+        values = [lower + (upper - lower) * index / 4 for index in range(5)]
+        labels = [f"{value:.2f}" if abs(value) < 1_000_000 else f"{value:.3g}" for value in values]
+        font = QFontMetricsF(painter.font())
+        left_margin = max(font.horizontalAdvance(label) for label in labels) + 24
+        top_margin = font.height() + 8
+        bottom_margin = font.height() * 2 + 12
+        chart = QRectF(left_margin, top_margin, self.width() - left_margin - 24,
+                       self.height() - top_margin - bottom_margin)
         last = len(history) + len(result.forecast) - 1
 
         def point(index, price):
             return QPointF(chart.left() + chart.width() * index / last,
                            chart.bottom() - chart.height() * (price - lower) / (upper - lower))
 
-        for line in range(5):
-            value = lower + (upper - lower) * line / 4
+        for value, label in zip(values, labels):
             left, right = point(0, value), point(last, value)
             painter.setPen(QColor("#2b394d"))
             painter.drawLine(left, right)
             painter.setPen(QColor("#bac8da"))
-            painter.drawText(QPointF(12, left.y() + 4), f"{value:.2f}")
+            label_x = chart.left() - font.horizontalAdvance(label) - 12
+            painter.drawText(QPointF(label_x, left.y() + font.ascent() / 2), label)
 
+        painter.save()
+        painter.setClipRect(chart.adjusted(-1, -1, 1, 1))
         start = len(history) - 1
         top = [point(start, history[-1])] + [
             point(start + step, value) for step, value in enumerate(result.upper, 1)
@@ -76,8 +85,12 @@ class PriceChart(QWidget):
         painter.drawPolyline(QPolygonF([
             point(start + i, value) for i, value in enumerate([history[-1], *result.forecast])
         ]))
+        painter.restore()
         painter.setPen(QColor("#bac8da"))
-        painter.drawText(QPointF(chart.left(), chart.bottom() + 22), translate(self.language, "Recent observations"))
+        painter.drawText(
+            QPointF(chart.left(), chart.bottom() + font.height() + 6),
+            translate(self.language, "Recent observations"),
+        )
         painter.end()
 
 
@@ -93,7 +106,11 @@ class Dashboard(QMainWindow):
         self.setMinimumSize(760, 680)
         self.resize(1100, 850)
         page = QWidget()
-        self.setCentralWidget(page)
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setWidget(page)
+        self.setCentralWidget(self.scroll_area)
         layout = QVBoxLayout(page)
         layout.setContentsMargins(28, 22, 28, 22)
         layout.setSpacing(14)
@@ -134,27 +151,35 @@ class Dashboard(QMainWindow):
             button.clicked.connect(action)
             toolbar.addWidget(button)
         toolbar.addStretch()
-        toolbar.addWidget(self.localized_label("Forecast steps"))
+        forecast_controls = QHBoxLayout()
+        layout.addLayout(forecast_controls)
+        forecast_controls.addWidget(self.localized_label("Forecast steps"))
         self.horizon = QSpinBox()
         self.horizon.setRange(1, 30)
         self.horizon.setValue(5)
         self.localize(self.horizon.setAccessibleName, "Forecast steps")
         self.horizon.valueChanged.connect(self.refresh)
-        toolbar.addWidget(self.horizon)
+        forecast_controls.addWidget(self.horizon)
+        forecast_controls.addStretch()
         self.dataset = QLabel()
         self.dataset.setTextFormat(Qt.TextFormat.PlainText)
+        self.dataset.setWordWrap(True)
         self.dataset.setObjectName("dataset")
         layout.addWidget(self.dataset)
         self.chart = PriceChart()
         layout.addWidget(self.chart, 1)
-        layout.addWidget(self.localized_label("Closing price  /  Dashed forecast  /  Shaded empirical interval"))
+        self.chart_legend = self.localized_label(
+            "Closing price  /  Dashed forecast  /  Shaded empirical interval"
+        )
+        self.chart_legend.setWordWrap(True)
+        layout.addWidget(self.chart_legend)
         self.metrics = QLabel()
         self.metrics.setWordWrap(True)
         self.metrics.setObjectName("metrics")
         layout.addWidget(self.metrics)
         export = self.localized_button("Export forecast CSV")
         export.clicked.connect(self.export_forecast)
-        layout.addWidget(export, alignment=Qt.AlignmentFlag.AlignLeft)
+        forecast_controls.addWidget(export)
         analyst_title = self.localized_label("Local analyst")
         analyst_title.setProperty("sectionTitle", True)
         layout.addWidget(analyst_title)
@@ -204,6 +229,7 @@ class Dashboard(QMainWindow):
         market_section.addLayout(market_controls)
         self.quote_label = QLabel()
         self.quote_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.quote_label.setWordWrap(True)
         self.quote_label.setObjectName("quote")
         market_section.addWidget(self.quote_label)
         self.history_warning = QLabel()
