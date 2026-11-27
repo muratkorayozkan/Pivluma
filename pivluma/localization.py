@@ -1,6 +1,19 @@
 """User-facing desktop translations."""
 
 TURKISH = {
+    "Selected model": "Seçilen model",
+    "Last-price baseline": "Son fiyat referansı",
+    "Linear trend": "Doğrusal eğilim",
+    "Damped trend": "Sönümlü eğilim",
+    "Smoothed level": "Üstel düzleştirilmiş seviye",
+    "adaptive": "Uyarlamalı",
+    "Built-in analyst": "Yerleşik analist",
+    "Local analyst model": "Yerel analist modeli",
+    "Ollama models must be installed and running on this PC.": "Ollama ve seçilen model bu bilgisayarda kurulu olmalıdır.",
+    "Local model is preparing an explanation…": "Yerel model açıklama hazırlıyor…",
+    "Local model ({model})": "Yerel model ({model})",
+    "Local model unavailable. Check that Ollama and the selected model are running.":
+        "Yerel modele ulaşılamadı. Ollama’nın çalıştığını ve seçilen modelin kurulu olduğunu kontrol edin.",
     "Chart": "Grafik",
     "Reset chart": "Grafiği sıfırla",
     "Close": "Kapanış",

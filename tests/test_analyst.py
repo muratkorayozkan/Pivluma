@@ -28,7 +28,9 @@ class AnalystTests(unittest.TestCase):
 
     def test_backtest_compares_against_baseline(self):
         reply = self.ask("How accurate was the model?")
-        self.assertIn("last-price baseline had the lower MAE", reply)
+        self.assertIn(f"{self.result.baseline_mae:.2f}", reply)
+        self.assertIn(f"{self.result.mae:.2f}", reply)
+        self.assertIn("The difference was", reply)
         self.assertIn(str(self.result.origins), reply)
 
     def test_price_change_includes_source_and_period(self):

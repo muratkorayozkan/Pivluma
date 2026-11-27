@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 
 from pivluma import __version__
 from pivluma.appearance import THEMES
+from pivluma.local_model import MODELS
 from pivluma.updates import ROOT
 
 
@@ -37,9 +38,19 @@ def settings_dialog(window):
         themes.addItem(window.text(label), key)
     themes.setCurrentIndex(max(0, themes.findData(window.theme)))
     form.addRow(window.text("Theme"), themes)
+    model = QComboBox()
+    model.addItem(window.text("Built-in analyst"), "")
+    for name in MODELS:
+        model.addItem(name, name)
+    model.setCurrentIndex(max(0, model.findData(window.analyst_model)))
+    form.addRow(window.text("Local analyst model"), model)
+    help_text = QLabel(window.text("Ollama models must be installed and running on this PC."))
+    help_text.setWordWrap(True)
+    form.addRow(help_text)
     _buttons(dialog, form, QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
     if dialog.exec() == QDialog.DialogCode.Accepted:
         window.change_theme(themes.currentData())
+        window.set_analyst_model(model.currentData())
 
 
 def axis_dialog(window):

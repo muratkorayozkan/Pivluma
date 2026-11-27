@@ -6,9 +6,9 @@ Pivluma is a Windows desktop application in development for financial forecastin
 
 ## Current release
 
-[Pivluma 0.9.0](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.9.0) is the current release. Download the [portable Windows x64 ZIP](https://github.com/muratkorayozkan/Pivluma/releases/latest), extract it, and run Pivluma.exe.
+[Pivluma 0.10.0](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.10.0) is the current release. Download the [portable Windows x64 ZIP](https://github.com/muratkorayozkan/Pivluma/releases/latest), extract it, and run Pivluma.exe.
 
-The Python forecasting engine fits a rolling linear trend to the latest 20 observations. Walk-forward evaluation compares mean absolute error with a last-price baseline. Forecast intervals use empirical errors for each forecast step.
+The forecasting engine compares a last-price baseline, linear trend, damped trend, and exponentially smoothed level. At each origin it uses only completed prior forecasts to select a model, using recent errors at several lead times. The dashboard reports the selected model and compares the full selection strategy against the last-price baseline on the same walk-forward origins. Forecast intervals use empirical errors for each step.
 
 The Turkish and English desktop dashboard and local analyst assistant are available. Kraken public crypto data and configured Twelve Data feeds are available. A portable Windows package can be built from source. Live verification with a Twelve Data account is pending.
 
@@ -51,12 +51,12 @@ python -m venv .venv
 .\scripts\build-windows.ps1 -Python .\.venv\Scripts\python.exe
 ```
 
-The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.9.0-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
+The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.10.0-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
 
 
 ## Connect live market data
 
-Use **Choose symbol** to browse by instrument name and code, or enter a single code manually. **Connect live** opens the picker if the symbol field is empty.
+Open the **Symbol** field's drop-down to select an instrument by name and code, or type a single code directly. **Connect live** opens the same drop-down when the field is empty.
 
 **BTC/USD**, **ETH/USD**, **SOL/USD**, **XRP/USD**, and **DOGE/USD** connect directly to Kraken public market data without an account. Other symbols use Twelve Data if the installation already supplies `TWELVE_DATA_API_KEY` in the process environment and the account permits display and streaming for that symbol. The app never prompts for a key.
 
@@ -67,7 +67,15 @@ Provider references: [Kraken daily history](https://docs.kraken.com/api/docs/res
 
 ## Ask the local analyst
 
-Use the analyst topic buttons or enter an English or Turkish question. **Visible period** summarizes the closing prices currently shown in the chart. **Selected point** explains the highlighted historical or forecast observation. Both shortcuts follow the chart as you change the selected point or visible period. The moving average uses the last 20 closes (or all available closes if fewer). Replies use the selected interface language. Try “How did the price move?”, “What is the forecast?”, or “How accurate was the model?”. Replies use the active series, date range, and forecast horizon. The assistant matches supported topics and computes answers locally, with no account or network connection required.
+Use the analyst topic buttons or enter an English or Turkish question. **Visible period** summarizes the closing prices currently shown in the chart. **Selected point** explains the highlighted historical or forecast observation. Both shortcuts follow the chart as you change the selected point or visible period. The moving average uses the last 20 closes (or all available closes if fewer). Replies use the selected interface language. Try “How did the price move?”, “What is the forecast?”, or “How accurate was the model?”. Replies use the active series, date range, and forecast horizon. The built-in analyst matches supported topics and computes answers offline.
+
+For natural-language explanations, install [Ollama for Windows](https://ollama.com/download/windows), run it locally, and pull one of the supported [Qwen3 models](https://ollama.com/library/qwen3), for example:
+
+```powershell
+ollama pull qwen3:4b
+```
+
+Select the installed model in **Settings → Local analyst model**. Pivluma sends the question and calculated facts only to the Ollama service at `127.0.0.1:11434`. The model is downloaded separately. Generated explanations appear below the calculated answer, which stays available if the model cannot respond.
 
 
 ## Try offline analysis

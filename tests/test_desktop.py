@@ -86,18 +86,19 @@ class DashboardTests(unittest.TestCase):
             delete(window)
             self.application.processEvents()
 
-    def test_empty_live_symbol_opens_picker_and_uses_the_selected_code(self):
+    def test_empty_live_symbol_opens_inline_list_and_selection_uses_code(self):
         window = Dashboard(Path("unused.sqlite3"))
         try:
-            with patch("pivluma.desktop.QInputDialog.getItem",
-                       return_value=("Bitcoin (BTC/USD)", True)) as picker, patch(
-                "pivluma.desktop.QInputDialog.getText"
-            ) as prompt, patch.object(window.market, "start") as connect:
+            with patch.object(window.symbol_picker, "showPopup") as picker:
                 window.connect_market()
-            self.assertIn("Apple (AAPL)", picker.call_args.args[3])
-            self.assertIn("Bitcoin (BTC/USD)", picker.call_args.args[3])
+            picker.assert_called_once()
+            index = window.symbol_picker.findData("BTC/USD")
+            self.assertEqual(window.symbol_picker.itemText(index), "Bitcoin (BTC/USD)")
+            window.symbol_picker.setCurrentIndex(index)
+            window.symbol_picker.activated.emit(index)
             self.assertEqual(window.symbol.text(), "BTC/USD")
-            prompt.assert_not_called()
+            with patch.object(window.market, "start") as connect:
+                window.connect_market()
             connect.assert_called_once_with("BTC/USD", None)
         finally:
             window.close()
@@ -119,15 +120,19 @@ class DashboardTests(unittest.TestCase):
             delete(window)
             self.application.processEvents()
 
-    def test_canceling_live_symbol_picker_does_not_prompt_for_key(self):
+    def test_analyst_keeps_calculated_facts_when_local_model_is_unavailable(self):
         window = Dashboard(Path("unused.sqlite3"))
         try:
-            with patch("pivluma.desktop.QInputDialog.getItem", return_value=("", False)), patch(
-                "pivluma.desktop.QInputDialog.getText", return_value=("", False)
-            ) as prompt:
-                window.connect_market()
-            prompt.assert_not_called()
-            self.assertEqual(window.symbol.text(), "")
+            window.set_analyst_model("qwen3:4b")
+            with patch.object(window.local_model, "start") as start:
+                window.ask_topic("What is the forecast?")
+            args = start.call_args.args
+            self.assertEqual(args[0], "qwen3:4b")
+            self.assertEqual(args[3]["forecast"][0]["price"], window.chart.result.forecast[0])
+            self.assertEqual(args[3]["selected_forecast_model"], window.chart.result.model)
+            window.show_model_answer("qwen3:4b", "")
+            self.assertIn("5 observations ahead", window.reply.text())
+            self.assertIn("Local model unavailable", window.reply.text())
         finally:
             window.close()
             delete(window)
@@ -226,7 +231,7 @@ class DashboardTests(unittest.TestCase):
             self.assertLess(chart.bottom(), window.chart_legend.geometry().top())
             self.assertLess(chart.bottom(), window.metrics.geometry().top())
             self.assertGreater(window.scroll_area.verticalScrollBar().maximum(), 0)
-            window.scroll_area.ensureWidgetVisible(window.reply)
+            window.scroll_area.ensureWidgetVisible(window.metrics)
             self.assertGreater(window.scroll_area.verticalScrollBar().value(), 0)
         finally:
             window.close()
@@ -303,6 +308,10 @@ class DashboardTests(unittest.TestCase):
             self.assertTrue(window.workspace_tabs.isVisible())
             self.assertIs(window.chart.result, result)
             window.workspace_tabs.setCurrentIndex(1)
+            self.assertTrue(window.reply.isVisible())
+            window.resize(1320, 900)
+            self.application.processEvents()
+            self.assertTrue(window.chart.isVisible())
             self.assertTrue(window.reply.isVisible())
         finally:
             window.close()

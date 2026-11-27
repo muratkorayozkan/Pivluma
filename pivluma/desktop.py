@@ -22,6 +22,7 @@ from pivluma.chart import PriceChart
 from pivluma.data import PriceStore, read_prices, sample_prices
 from pivluma.dialogs import about_dialog, axis_dialog, history_dialog, settings_dialog
 from pivluma.forecast import TRAINING_WINDOW, analyze
+from pivluma.local_model import MODELS, LocalModel
 from pivluma.localization import translate
 from pivluma.market import PUBLIC_SYMBOLS, MarketFeed
 from pivluma.update_ui import UpdateController
@@ -37,6 +38,9 @@ class Dashboard(QMainWindow):
         self.language = "en"
         self.theme = "dark-blue"
         self.settings = None
+        self.analyst_model = ""
+        self.local_model = LocalModel(self)
+        self.local_model.completed.connect(self.show_model_answer)
         self.localized = []
         self.market_message = "Twelve Data · Disconnected"
         self.setWindowIcon(QIcon(str(Path(__file__).with_name("pivluma.ico"))))
@@ -55,7 +59,7 @@ class Dashboard(QMainWindow):
         title = QLabel("Pivluma")
         title.setObjectName("title")
         header = QHBoxLayout()
-        header.addWidget(title)
+        layout.addWidget(title)
         header.addStretch()
         header.addWidget(self.localized_label("Language"))
         self.language_picker = QComboBox()
@@ -65,13 +69,12 @@ class Dashboard(QMainWindow):
         header.addWidget(self.language_picker)
         self.update_button = self.localized_button("Check for updates")
         self.update_button.hide()
-        navigation = QHBoxLayout()
-        navigation.addStretch()
         for label, action in (("Revision history", history_dialog), ("About Pivluma", about_dialog),
                               ("Settings", settings_dialog)):
             button = self.localized_button(label)
             button.clicked.connect(lambda checked=False, callback=action: callback(self))
-            navigation.addWidget(button)
+            header.addWidget(button)
+        header.addWidget(self.update_button)
         layout.addLayout(header)
         self.update_message = ""
         self.update_label = QLabel()
@@ -80,11 +83,8 @@ class Dashboard(QMainWindow):
         self.update_label.setFixedWidth(310)
         self.update_label.hide()
         update_row = QHBoxLayout()
-        update_row.addLayout(navigation, 1)
-        update_column = QVBoxLayout()
-        update_column.addWidget(self.update_button, alignment=Qt.AlignmentFlag.AlignRight)
-        update_column.addWidget(self.update_label, alignment=Qt.AlignmentFlag.AlignRight)
-        update_row.addLayout(update_column)
+        update_row.addStretch()
+        update_row.addWidget(self.update_label, alignment=Qt.AlignmentFlag.AlignRight)
         layout.addLayout(update_row)
         market_section = QVBoxLayout()
         market_heading = self.localized_label("Market data")
@@ -93,10 +93,30 @@ class Dashboard(QMainWindow):
         layout.addLayout(market_section)
         toolbar = QHBoxLayout()
         market_section.addLayout(toolbar)
-        self.symbol = QLineEdit()
+        self.symbol_picker = QComboBox()
+        self.symbol_picker.setEditable(True)
+        self.symbol_picker.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.symbol = self.symbol_picker.lineEdit()
+        instruments = {
+            **PUBLIC_SYMBOLS,
+            "AAPL": "Apple", "MSFT": "Microsoft", "NVDA": "NVIDIA", "TSLA": "Tesla",
+            "SPY": "SPDR S&P 500 ETF", "EUR/USD": "Euro / US dollar",
+            "USD/TRY": "US dollar / Turkish lira",
+        }
+        for code, name in instruments.items():
+            index = self.symbol_picker.count()
+            self.symbol_picker.addItem(f"{self.text(name)} ({code})", code)
+            self.localize(
+                lambda text, index=index, code=code: self.symbol_picker.setItemText(index, f"{text} ({code})"),
+                name,
+            )
+        self.symbol_picker.setCurrentIndex(-1)
+        self.symbol_picker.activated.connect(
+            lambda index: self.symbol.setText(self.symbol_picker.itemData(index))
+        )
         self.localize(self.symbol.setPlaceholderText, "Symbol")
         self.localize(self.symbol.setAccessibleName, "Symbol")
-        toolbar.addWidget(self.symbol)
+        toolbar.addWidget(self.symbol_picker, 1)
         for name, action in (("Load saved", self.load_saved), ("Import CSV", self.import_csv),
                              ("Sample data", self.show_sample)):
             button = self.localized_button(name)
@@ -227,9 +247,6 @@ class Dashboard(QMainWindow):
         connect.clicked.connect(self.connect_market)
         disconnect = self.localized_button("Disconnect")
         disconnect.clicked.connect(self.stop_market)
-        choose = self.localized_button("Choose symbol")
-        choose.clicked.connect(self.choose_symbol)
-        market_controls.addWidget(choose)
         market_controls.addWidget(connect)
         market_controls.addWidget(disconnect)
         self.market_status = QLabel("Twelve Data · Disconnected")
@@ -273,6 +290,8 @@ class Dashboard(QMainWindow):
                 self.workspace_tabs.removeTab(0)
             self.workspace_splitter.addWidget(self.chart_panel)
             self.workspace_splitter.addWidget(self.analyst_panel)
+            self.chart_panel.show()
+            self.analyst_panel.show()
             self.workspace_splitter.setStretchFactor(0, 3)
             self.workspace_splitter.setStretchFactor(1, 2)
             self.workspace_splitter.setSizes([730, 440])
@@ -319,8 +338,10 @@ class Dashboard(QMainWindow):
 
     def change_language(self):
         self.language = self.language_picker.currentData()
+        symbol = self.symbol.text()
         for setter, message in self.localized:
             setter(self.text(message))
+        self.symbol.setText(symbol)
         if self.workspace_tabs.count() == 2:
             self.workspace_tabs.setTabText(0, self.text("Chart"))
             self.workspace_tabs.setTabText(1, self.text("Local analyst"))
@@ -334,8 +355,9 @@ class Dashboard(QMainWindow):
         self.update_summary()
         self.show_chart_point(self.chart.selected_index)
         self.update_label.setText(self.text(self.update_message))
+        self.local_model.cancel()
         if self.reply.text():
-            self.ask_analyst()
+            self.render_analyst(False)
         self.status.clear()
 
     def set_market_status(self, message):
@@ -347,28 +369,11 @@ class Dashboard(QMainWindow):
         self.history_warning.setText(self.text(message))
         self.history_warning.setVisible(bool(message))
 
-    def choose_symbol(self):
-        instruments = {
-            **PUBLIC_SYMBOLS,
-            "AAPL": "Apple", "MSFT": "Microsoft", "NVDA": "NVIDIA", "TSLA": "Tesla",
-            "SPY": "SPDR S&P 500 ETF", "EUR/USD": "Euro / US dollar",
-            "USD/TRY": "US dollar / Turkish lira",
-        }
-        choices = {f"{self.text(name)} ({symbol})": symbol for symbol, name in instruments.items()}
-        current = self.symbol.text().strip().upper()
-        index = next((i for i, symbol in enumerate(choices.values()) if symbol == current), 0)
-        choice, accepted = QInputDialog.getItem(
-            self, self.text("Choose symbol"), self.text("Market instrument"), list(choices), index, False
-        )
-        if accepted:
-            self.symbol.setText(choices[choice])
-            return choices[choice]
-        return None
-
     def connect_market(self):
         try:
-            symbol = self.symbol.text().strip().upper() or self.choose_symbol()
-            if symbol is None:
+            symbol = self.symbol.text().strip().upper()
+            if not symbol:
+                self.symbol_picker.showPopup()
                 return
             if ',' in symbol:
                 raise ValueError(self.text("Enter one symbol for live data, such as AAPL or EUR/USD."))
@@ -500,9 +505,20 @@ class Dashboard(QMainWindow):
 
     def refresh_contextual_reply(self):
         if self.reply.text() and self.contextual_topic() is not None:
-            self.ask_analyst()
+            self.local_model.cancel()
+            self.render_analyst(False)
+
+    def set_analyst_model(self, model):
+        self.local_model.cancel()
+        self.analyst_model = model if model in MODELS else ""
+        if self.settings is not None:
+            self.settings.setValue("analyst_model", self.analyst_model)
 
     def ask_analyst(self):
+        self.local_model.cancel()
+        self.render_analyst(True)
+
+    def render_analyst(self, use_model):
         topic = self.contextual_topic()
         if topic == "point":
             index = self.chart.selected_index
@@ -512,6 +528,8 @@ class Dashboard(QMainWindow):
                 if index >= len(self.chart.visible_history()):
                     message += "\n" + self.text("The interval is based on past forecast errors.")
             self.reply.setText(message)
+            if index is not None:
+                self.request_model_answer(use_model, message)
             return
         prices = self.prices
         question = self.question.text()
@@ -519,7 +537,39 @@ class Dashboard(QMainWindow):
             start, end = self.chart.bounds()
             prices = prices[start:end]
             question = "How did the price move?"
-        self.reply.setText(answer(question, self.series_label, prices, self.chart.result, self.language))
+        message = answer(question, self.series_label, prices, self.chart.result, self.language)
+        self.reply.setText(message)
+        self.request_model_answer(use_model, message)
+
+    def request_model_answer(self, use_model, calculation):
+        question = self.question.text().strip()
+        if not use_model or not self.analyst_model or not question:
+            return
+        result = self.chart.result
+        first, last = self.prices[0], self.prices[-1]
+        facts = {
+            "series": self.series_label,
+            "first_date": str(first.day), "last_date": str(last.day), "last_close": last.close,
+            "selected_forecast_model": result.model, "horizon": len(result.forecast),
+            "forecast": [
+                {"step": step, "price": estimate, "lower": lower, "upper": upper}
+                for step, (estimate, lower, upper) in enumerate(
+                    zip(result.forecast, result.lower, result.upper), 1
+                )
+            ],
+            "strategy_mae": result.mae, "last_price_baseline_mae": result.baseline_mae,
+            "backtest_origins": result.origins, "calculation": calculation,
+        }
+        self.model_calculation = calculation
+        self.reply.setText(calculation + "\n\n" + self.text("Local model is preparing an explanation…"))
+        self.local_model.start(self.analyst_model, self.language, question[:2000], facts)
+
+    def show_model_answer(self, model, response):
+        explanation = (
+            self.text("Local model ({model})", model=model) + "\n" + response
+            if response else self.text("Local model unavailable. Check that Ollama and the selected model are running.")
+        )
+        self.reply.setText(self.model_calculation + "\n\n" + explanation)
 
     def export_forecast(self):
         filename, _ = QFileDialog.getSaveFileName(self, self.text("Export forecast"), "forecast.csv",
@@ -544,6 +594,7 @@ class Dashboard(QMainWindow):
         self.status.setText(self.text("Forecast exported to {path}", path=path))
 
     def refresh(self):
+        self.local_model.cancel()
         closes = [price.close for price in self.prices]
         result = analyze(closes, self.horizon.value())
         self.chart.history = closes
@@ -565,6 +616,7 @@ class Dashboard(QMainWindow):
         ))
         result = self.chart.result
         fields = (
+            ("Selected model", self.text(result.model)),
             ("Last close", f"{self.prices[-1].close:.2f}"),
             ("Final forecast", f"{result.forecast[-1]:.2f}"),
             ("Model MAE", f"{result.mae:.2f}"),
@@ -586,6 +638,7 @@ def main():
     settings = QSettings("Pivluma", "Pivluma")
     window.settings = settings
     window.change_theme(settings.value("theme", "dark-blue", type=str))
+    window.set_analyst_model(settings.value("analyst_model", "", type=str))
     application.styleHints().colorSchemeChanged.connect(
         lambda *_: window.change_theme(window.theme) if window.theme == "system" else None
     )
