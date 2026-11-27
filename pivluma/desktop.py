@@ -1,6 +1,5 @@
 """Offline market-analysis dashboard."""
 
-import csv
 import os
 import sqlite3
 import sys
@@ -21,6 +20,7 @@ from pivluma.appearance import THEMES, colors_for, stylesheet
 from pivluma.chart import PriceChart
 from pivluma.data import PriceStore, read_prices, sample_prices
 from pivluma.dialogs import about_dialog, axis_dialog, history_dialog, settings_dialog
+from pivluma.export import write_forecast
 from pivluma.forecast import TRAINING_WINDOW, analyze
 from pivluma.local_model import MODELS, LocalModel
 from pivluma.localization import translate
@@ -111,9 +111,8 @@ class Dashboard(QMainWindow):
                 name,
             )
         self.symbol_picker.setCurrentIndex(-1)
-        self.symbol_picker.activated.connect(
-            lambda index: self.symbol.setText(self.symbol_picker.itemData(index))
-        )
+        self.symbol_picker.activated.connect(self.select_live_symbol)
+        self.symbol.returnPressed.connect(self.connect_market)
         self.localize(self.symbol.setPlaceholderText, "Symbol")
         self.localize(self.symbol.setAccessibleName, "Symbol")
         toolbar.addWidget(self.symbol_picker, 1)
@@ -162,9 +161,9 @@ class Dashboard(QMainWindow):
             self.localize(lambda text, index=index: self.history_range.setItemText(index, text), message)
         self.history_range.setCurrentIndex(2)
         chart_controls.addWidget(self.history_range)
-        axis = self.localized_button("Price axis")
-        axis.clicked.connect(lambda: axis_dialog(self))
-        chart_controls.addWidget(axis)
+        self.axis_button = self.localized_button("Price axis")
+        self.axis_button.clicked.connect(lambda: axis_dialog(self))
+        chart_controls.addWidget(self.axis_button)
         reset = self.localized_button("Reset chart")
         reset.clicked.connect(self.reset_chart)
         chart_controls.addWidget(reset)
@@ -199,9 +198,9 @@ class Dashboard(QMainWindow):
         self.metrics.setWordWrap(True)
         self.metrics.setObjectName("metrics")
         chart_layout.addWidget(self.metrics)
-        export = self.localized_button("Export forecast CSV")
-        export.clicked.connect(self.export_forecast)
-        forecast_controls.addWidget(export)
+        self.export_button = self.localized_button("Export forecast XLSX")
+        self.export_button.clicked.connect(self.export_forecast)
+        forecast_controls.addWidget(self.export_button)
         analyst_title = self.localized_label("Local analyst")
         analyst_title.setProperty("sectionTitle", True)
         analyst_layout.addWidget(analyst_title)
@@ -369,6 +368,28 @@ class Dashboard(QMainWindow):
         self.history_warning.setText(self.text(message))
         self.history_warning.setVisible(bool(message))
 
+    def select_live_symbol(self, index):
+        symbol = self.symbol_picker.itemData(index)
+        if symbol:
+            self.symbol.setText(symbol)
+            self.connect_market()
+
+    def clear_analysis(self, symbol):
+        self.local_model.cancel()
+        self.series_source = ""
+        self.series_symbol = symbol
+        self.prices = []
+        self.chart.history = []
+        self.chart.days = []
+        self.chart.result = None
+        self.chart.plot_area.setWidth(0)
+        self.chart.view_changed()
+        self.horizon.setEnabled(False)
+        self.export_button.setEnabled(False)
+        self.axis_button.setEnabled(False)
+        self.reply.clear()
+        self.update_summary()
+
     def connect_market(self):
         try:
             symbol = self.symbol.text().strip().upper()
@@ -377,6 +398,15 @@ class Dashboard(QMainWindow):
                 return
             if ',' in symbol:
                 raise ValueError(self.text("Enter one symbol for live data, such as AAPL or EUR/USD."))
+            if symbol == self.live_symbol and (self.market.pending is not None or self.market.socket is not None):
+                return
+            self.market.stop()
+            self.last_quote = None
+            self.live_symbol = symbol
+            self.set_history_warning("")
+            self.update_quote()
+            self.status.clear()
+            self.clear_analysis(symbol)
             key = None
             if symbol not in PUBLIC_SYMBOLS:
                 key = os.environ.get("TWELVE_DATA_API_KEY", "").strip()
@@ -384,11 +414,7 @@ class Dashboard(QMainWindow):
                     raise ValueError(self.text(
                         "Live access is not configured for this symbol. Choose a public crypto symbol."
                     ))
-            self.last_quote = None
-            self.live_symbol = symbol
-            self.set_history_warning("")
             self.market.start(symbol, key)
-            self.update_quote()
         except ValueError as error:
             self.status.setText(str(error))
 
@@ -398,6 +424,8 @@ class Dashboard(QMainWindow):
         self.mark_stream_lost()
 
     def receive_history(self, symbol, prices):
+        if symbol != self.live_symbol:
+            return
         if len(prices) <= TRAINING_WINDOW + 9:
             self.status.setText(self.text("Twelve Data returned too few daily observations for a forecast."))
             return
@@ -484,6 +512,9 @@ class Dashboard(QMainWindow):
         self.series_source = label
         self.series_symbol = symbol
         self.prices = prices
+        self.horizon.setEnabled(True)
+        self.export_button.setEnabled(True)
+        self.axis_button.setEnabled(True)
         self.chart.set_axis()
         self.chart.history_offset = 0
         self.horizon.blockSignals(True)
@@ -519,6 +550,9 @@ class Dashboard(QMainWindow):
         self.render_analyst(True)
 
     def render_analyst(self, use_model):
+        if not self.prices:
+            self.reply.setText(self.text("Price history is needed for analysis."))
+            return
         topic = self.contextual_topic()
         if topic == "point":
             index = self.chart.selected_index
@@ -572,28 +606,27 @@ class Dashboard(QMainWindow):
         self.reply.setText(self.model_calculation + "\n\n" + explanation)
 
     def export_forecast(self):
-        filename, _ = QFileDialog.getSaveFileName(self, self.text("Export forecast"), "forecast.csv",
-                                                   self.text("CSV files (*.csv)"))
+        result = self.chart.result
+        if result is None:
+            return
+        filename, _ = QFileDialog.getSaveFileName(
+            self, self.text("Export forecast"), "forecast.xlsx", self.text("Excel workbook (*.xlsx)")
+        )
         if not filename:
             return
         path = Path(filename)
-        if not path.suffix:
-            path = path.with_suffix(".csv")
-        result = self.chart.result
+        if path.suffix.lower() != ".xlsx":
+            path = path.with_suffix(".xlsx")
         try:
-            with path.open("w", encoding="utf-8-sig", newline="") as stream:
-                writer = csv.writer(stream)
-                writer.writerow(("last_observed_date", "step", "forecast", "lower", "upper"))
-                for step, (forecast, lower, upper) in enumerate(
-                    zip(result.forecast, result.lower, result.upper), 1
-                ):
-                    writer.writerow((self.prices[-1].day, step, forecast, lower, upper))
+            write_forecast(path, result, self.prices[-1].day, self.series_label, self.text)
         except OSError as error:
             self.status.setText(self.text("Could not export forecast: {error}", error=error))
             return
         self.status.setText(self.text("Forecast exported to {path}", path=path))
 
     def refresh(self):
+        if not self.prices:
+            return
         self.local_model.cancel()
         closes = [price.close for price in self.prices]
         result = analyze(closes, self.horizon.value())
@@ -607,6 +640,10 @@ class Dashboard(QMainWindow):
         self.status.clear()
 
     def update_summary(self):
+        if not self.prices:
+            self.dataset.setText(self.text("{symbol} · No price history loaded", symbol=self.series_symbol))
+            self.metrics.clear()
+            return
         source = self.text(self.series_source)
         self.series_label = f"{self.series_symbol} · {source}" if self.series_symbol else source
         self.dataset.setText(self.text(

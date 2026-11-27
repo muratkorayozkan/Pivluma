@@ -1,10 +1,10 @@
-import csv
 import os
 import sqlite3
 import tempfile
 import unittest
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
+from openpyxl import load_workbook
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -94,12 +94,19 @@ class DashboardTests(unittest.TestCase):
             picker.assert_called_once()
             index = window.symbol_picker.findData("BTC/USD")
             self.assertEqual(window.symbol_picker.itemText(index), "Bitcoin (BTC/USD)")
-            window.symbol_picker.setCurrentIndex(index)
-            window.symbol_picker.activated.emit(index)
-            self.assertEqual(window.symbol.text(), "BTC/USD")
             with patch.object(window.market, "start") as connect:
-                window.connect_market()
+                window.symbol_picker.setCurrentIndex(index)
+                window.symbol_picker.activated.emit(index)
             connect.assert_called_once_with("BTC/USD", None)
+            self.assertEqual(window.symbol.text(), "BTC/USD")
+            self.assertIn("BTC/USD", window.dataset.text())
+            self.assertIsNone(window.chart.result)
+            self.assertFalse(window.export_button.isEnabled())
+            window.receive_history("ETH/USD", sample_prices())
+            self.assertIsNone(window.chart.result)
+            window.receive_history("BTC/USD", sample_prices())
+            self.assertIsNotNone(window.chart.result)
+            self.assertTrue(window.export_button.isEnabled())
         finally:
             window.close()
             delete(window)
@@ -152,26 +159,30 @@ class DashboardTests(unittest.TestCase):
             delete(window)
             self.application.processEvents()
 
-    def test_export_csv_uses_the_active_forecast_horizon(self):
+    def test_excel_export_uses_the_active_forecast_horizon(self):
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "forecast.csv"
+            path = Path(directory) / "forecast.xlsx"
             window = Dashboard(Path(directory) / "unused.sqlite3")
             try:
                 window.horizon.setValue(3)
                 with patch("pivluma.desktop.QFileDialog.getSaveFileName",
                            return_value=(str(path), "")):
                     window.export_forecast()
-                with path.open(encoding="utf-8-sig", newline="") as stream:
-                    rows = list(csv.DictReader(stream))
-                self.assertEqual([row["step"] for row in rows], ["1", "2", "3"])
-                self.assertEqual(rows[0]["last_observed_date"], str(window.prices[-1].day))
-                self.assertEqual(float(rows[-1]["forecast"]), window.chart.result.forecast[-1])
-                self.assertEqual(float(rows[-1]["lower"]), window.chart.result.lower[-1])
-                self.assertEqual(float(rows[-1]["upper"]), window.chart.result.upper[-1])
+                workbook = load_workbook(path)
+                try:
+                    sheet = workbook.active
+                    self.assertEqual(sheet["B2"].value.date(), window.prices[-1].day)
+                    self.assertEqual(sheet["B3"].value, window.chart.result.model)
+                    self.assertEqual([sheet[f"A{row}"].value for row in (9, 10, 11)], [1, 2, 3])
+                    self.assertAlmostEqual(sheet["B11"].value, window.chart.result.forecast[-1])
+                    self.assertAlmostEqual(sheet["C11"].value, window.chart.result.lower[-1])
+                    self.assertAlmostEqual(sheet["D11"].value, window.chart.result.upper[-1])
+                finally:
+                    workbook.close()
             finally:
                 window.close()
-            delete(window)
-            self.application.processEvents()
+                delete(window)
+                self.application.processEvents()
 
     def test_language_switch_preserves_analysis_and_changes_visible_text(self):
         window = Dashboard(Path("unused.sqlite3"))

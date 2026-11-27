@@ -1,6 +1,15 @@
 """User-facing desktop translations."""
 
 TURKISH = {
+    "Export forecast XLSX": "Tahmini Excel olarak dışa aktar",
+    "Excel workbook (*.xlsx)": "Excel çalışma kitabı (*.xlsx)",
+    "Series": "Seri",
+    "Last observed date": "Son gözlem tarihi",
+    "Step": "Adım",
+    "Lower bound": "Alt sınır",
+    "Upper bound": "Üst sınır",
+    "{symbol} · No price history loaded": "{symbol} · Fiyat geçmişi yüklenmedi",
+    "Price history is needed for analysis.": "Analiz için fiyat geçmişi gerekli.",
     "Selected model": "Seçilen model",
     "Last-price baseline": "Son fiyat referansı",
     "Linear trend": "Doğrusal eğilim",
