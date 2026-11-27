@@ -17,7 +17,14 @@ def smoke_test() -> int:
         window.horizon.setValue(7)
         window.question.setText("What is the forecast?")
         window.ask_analyst()
-        return int(window.chart.grab().isNull() or "7 observations ahead" not in window.reply.text())
+        english_reply = window.reply.text()
+        window.language_picker.setCurrentIndex(1)
+        window.question.setText("Tahmin ne?")
+        window.ask_analyst()
+        return int(
+            window.windowIcon().isNull() or window.chart.grab().isNull()
+            or "7 observations ahead" not in english_reply or "7 gözlem" not in window.reply.text()
+        )
     finally:
         window.close()
 

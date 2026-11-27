@@ -7,23 +7,45 @@ from pivluma.data import Price
 from pivluma.forecast import Analysis, TRAINING_WINDOW
 
 
-def answer(question: str, label: str, prices: Sequence[Price], result: Analysis) -> str:
-    words = set(re.findall(r"[a-z]+", question.lower()))
+def answer(question: str, label: str, prices: Sequence[Price], result: Analysis, language: str = "en") -> str:
+    words = set(re.findall(r"[^\W\d_]+", question.casefold()))
     first, latest = prices[0], prices[-1]
-    context = f"{label} | {first.day} to {latest.day}"
-    if words & {"backtest", "accuracy", "accurate", "performance", "mae", "baseline", "error"}:
+    turkish = language == "tr"
+    period = "–" if turkish else "to"
+    context = f"{label} | {first.day} {period} {latest.day}"
+    if words & {"backtest", "accuracy", "accurate", "performance", "mae", "baseline", "error", "doğruluk", "performans",
+                "hata", "başarılı", "başarısı", "test"}:
         comparison = "Both had the same MAE."
         if result.mae < result.baseline_mae:
             comparison = "The trend model had the lower MAE."
         elif result.mae > result.baseline_mae:
             comparison = "The last-price baseline had the lower MAE."
+        if turkish:
+            comparison = "İki modelin MAE değeri eşit."
+            if result.mae < result.baseline_mae:
+                comparison = "Eğilim modelinin MAE değeri daha düşük."
+            elif result.mae > result.baseline_mae:
+                comparison = "Son fiyatı sabit tutan referansın MAE değeri daha düşük."
+            return (
+                f"{context}\n{result.origins} geçmiş test başlangıcında ortalama mutlak hata "
+                f"eğilim modeli için {result.mae:.2f}, referans için {result.baseline_mae:.2f}. "
+                f"{comparison}"
+            )
         return (
             f"{context}\nAcross {result.origins} walk-forward test origins, mean absolute "
             f"error was {result.mae:.2f} for the trend model and {result.baseline_mae:.2f} "
             f"for the baseline. {comparison}"
         )
 
-    if words & {"forecast", "forecasting", "prediction", "predict", "interval", "range", "outlook"}:
+    if words & {"forecast", "forecasting", "prediction", "predict", "interval", "range", "outlook",
+                "tahmin", "tahmini", "aralık", "aralığı", "öngörü"}:
+        if turkish:
+            return (
+                f"{context}\nEğilim modeli {len(result.forecast)} gözlem sonrası için "
+                f"{result.forecast[-1]:.2f} öngörüyor. Son kapanış {latest.close:.2f}. "
+                f"Geçmiş hatalara dayalı aralık [{result.lower[-1]:.2f}, {result.upper[-1]:.2f}]. "
+                f"Eğilim son {TRAINING_WINDOW} gözlemden hesaplandı."
+            )
         return (
             f"{context}\nThe trend model estimates {result.forecast[-1]:.2f} at "
             f"{len(result.forecast)} observations ahead, from a last close of {latest.close:.2f}. "
@@ -32,11 +54,20 @@ def answer(question: str, label: str, prices: Sequence[Price], result: Analysis)
             f"to the latest {TRAINING_WINDOW} observations."
         )
 
-    if words & {"price", "prices", "move", "movement", "change", "history", "close"}:
+    if words & {"price", "prices", "move", "movement", "change", "history", "close", "fiyat", "fiyatı", "hareket",
+                "değişti", "değişim", "kapanış"}:
         change = (latest.close / first.close - 1) * 100
+        if turkish:
+            return (
+                f"{context}\n{len(prices)} gözlem boyunca kapanış fiyatı "
+                f"{first.close:.2f} seviyesinden {latest.close:.2f} seviyesine geldi "
+                f"(%{change:+.2f})."
+            )
         return (
             f"{context}\nThe closing price went from {first.close:.2f} to "
             f"{latest.close:.2f} ({change:+.2f}%) across {len(prices)} observations."
         )
 
+    if turkish:
+        return "Fiyat hareketi, tahmin veya geçmiş test performansı hakkında soru sorabilirsiniz."
     return "Ask about one of the supported topics: price movement, forecast, or backtest performance."

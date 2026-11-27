@@ -3,8 +3,9 @@ param([string]$Python = 'python')
 $ErrorActionPreference = 'Stop'
 Push-Location (Join-Path $PSScriptRoot '..')
 try {
+    $icon = (Resolve-Path 'pivluma/pivluma.ico').Path
     & $Python -m PyInstaller --noconfirm --clean --windowed --onedir --name Pivluma `
-        --paths . --specpath build --workpath build/pyinstaller --distpath dist scripts/windows_launcher.py
+        --paths . --icon $icon --add-data "${icon}:pivluma" --specpath build --workpath build/pyinstaller --distpath dist scripts/windows_launcher.py
     if ($LASTEXITCODE -ne 0) { throw 'PyInstaller failed.' }
 
     $exe = (Resolve-Path 'dist/Pivluma/Pivluma.exe').Path

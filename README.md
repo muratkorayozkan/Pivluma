@@ -4,11 +4,11 @@ Pivluma is a Windows desktop application in development for financial forecastin
 
 ## Current release
 
-[Pivluma 0.2.0](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.2.0) is the current release. Download the [portable Windows x64 ZIP](https://github.com/muratkorayozkan/Pivluma/releases/latest), extract it, and run Pivluma.exe.
+[Pivluma 0.3.0](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.3.0) is the current release. Download the [portable Windows x64 ZIP](https://github.com/muratkorayozkan/Pivluma/releases/latest), extract it, and run Pivluma.exe.
 
 The Python forecasting engine fits a rolling linear trend to the latest 20 observations. Walk-forward evaluation compares mean absolute error with a last-price baseline. Forecast intervals use empirical errors for each forecast step.
 
-The English desktop dashboard and local analyst assistant are available. Twelve Data integration is available. A portable Windows package can be built from source. Live verification with a Twelve Data account is pending.
+The Turkish and English desktop dashboard and local analyst assistant are available. Twelve Data integration is available. A portable Windows package can be built from source. Live verification with a Twelve Data account is pending.
 
 ## Run the desktop app
 
@@ -23,6 +23,8 @@ python -m venv .venv
 The dashboard opens with synthetic data and shows recent closing prices, the forecast, its empirical interval, and walk-forward error against a last-price baseline. Change **Forecast steps** to update the analysis. Choose **Export forecast CSV** to save one row per forecast step with the last observed date, forecast and interval bounds. The file uses UTF-8 with a byte order mark for Excel compatibility. To use your own data, enter a symbol and choose **Import CSV**. **Load saved** reopens that symbol from SQLite in the Windows application data directory. The command-line database can be selected independently with `--database`.
 
 
+Use the **Language** menu to switch between **EN · English** and **TR · Türkçe**. The selected language is remembered on this PC. Switching keeps the active prices and forecast horizon.
+
 ## Build the Windows package
 
 On 64-bit Windows with 64-bit Python 3.10 or newer, run these commands from the repository root:
@@ -33,7 +35,7 @@ python -m venv .venv
 .\scripts\build-windows.ps1 -Python .\.venv\Scripts\python.exe
 ```
 
-The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.2.0-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
+The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.3.0-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
 
 
 ## Connect live market data
@@ -47,7 +49,7 @@ Provider references: [REST API](https://twelvedata.com/docs), [WebSocket API](ht
 
 ## Ask the local analyst
 
-Enter an English question in **Local analyst** and select **Ask**. Try “How did the price move?”, “What is the forecast?”, or “How accurate was the model?”. Replies use the active series, date range, and forecast horizon. The assistant matches supported topics and computes answers locally, with no account or network connection required.
+Enter an English or Turkish question in the local analyst. Replies use the selected interface language. Try “How did the price move?”, “What is the forecast?”, or “How accurate was the model?”. Replies use the active series, date range, and forecast horizon. The assistant matches supported topics and computes answers locally, with no account or network connection required.
 
 
 ## Try offline analysis

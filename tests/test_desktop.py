@@ -106,6 +106,25 @@ class DashboardTests(unittest.TestCase):
             finally:
                 window.close()
 
+    def test_language_switch_preserves_analysis_and_changes_visible_text(self):
+        window = Dashboard(Path("unused.sqlite3"))
+        try:
+            window.horizon.setValue(7)
+            result = window.chart.result
+            window.language_picker.setCurrentIndex(1)
+            self.assertIn("Sentetik örnek", window.dataset.text())
+            self.assertIn("Son kapanış", window.metrics.text())
+            self.assertIs(window.chart.result, result)
+            self.assertEqual(window.horizon.value(), 7)
+            window.question.setText("Tahmin ne?")
+            window.ask_analyst()
+            self.assertIn("7 gözlem", window.reply.text())
+            window.language_picker.setCurrentIndex(0)
+            self.assertIn("Synthetic sample", window.dataset.text())
+            self.assertFalse(window.windowIcon().isNull())
+        finally:
+            window.close()
+
     def test_csv_import_persists_and_saved_series_loads(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
