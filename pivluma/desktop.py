@@ -8,16 +8,17 @@ from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
-from PySide6.QtCore import QPointF, QProcess, QRectF, QSettings, QStandardPaths, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFontMetricsF, QIcon, QPainter, QPen, QPolygonF
+from PySide6.QtCore import QProcess, QSettings, QStandardPaths, Qt, QTimer
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QFileDialog, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow,
-    QPushButton, QScrollArea, QSpinBox, QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QComboBox, QFileDialog, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow,
+    QPushButton, QScrollArea, QSpinBox, QSplitter, QStackedWidget, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from pivluma import __version__
 from pivluma.analyst import answer
 from pivluma.appearance import THEMES, colors_for, stylesheet
+from pivluma.chart import PriceChart
 from pivluma.data import PriceStore, read_prices, sample_prices
 from pivluma.dialogs import about_dialog, axis_dialog, history_dialog, settings_dialog
 from pivluma.forecast import TRAINING_WINDOW, analyze
@@ -27,121 +28,6 @@ from pivluma.update_ui import UpdateController
 
 
 MAX_HORIZON = 120
-
-
-class PriceChart(QWidget):
-    selected = Signal(object)
-    def __init__(self):
-        super().__init__()
-        self.setMinimumHeight(280)
-        self.history = []
-        self.days = []
-        self.history_limit = 120
-        self.axis_limits = None
-        self.selected_index = None
-        self.plot_area = QRectF()
-        self.colors = colors_for("dark-blue", Qt.ColorScheme.Dark)
-        self.result = None
-        self.language = "en"
-        self.setAccessibleName("Closing prices and forecast interval")
-
-    def visible_history(self):
-        return self.history[-self.history_limit:] if self.history_limit else self.history
-
-    def price_bounds(self):
-        history = self.visible_history()
-        lower = min(history + list(self.result.lower))
-        upper = max(history + list(self.result.upper))
-        padding = (upper - lower) * .08 or max(upper * .01, .001)
-        return lower - padding, upper + padding
-
-    def set_history_limit(self, limit):
-        self.history_limit = limit
-        self.select_index(None)
-
-    def set_axis(self, minimum=None, maximum=None):
-        self.axis_limits = None if minimum is None else (minimum, maximum)
-        self.update()
-
-    def select_index(self, index):
-        self.selected_index = index
-        self.selected.emit(index)
-        self.update()
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton and self.plot_area.contains(event.position()):
-            count = len(self.visible_history()) + len(self.result.forecast)
-            fraction = (event.position().x() - self.plot_area.left()) / self.plot_area.width()
-            self.select_index(round(fraction * (count - 1)))
-            return
-        super().mousePressEvent(event)
-
-    def paintEvent(self, event):
-        if not self.history:
-            return
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        _, surface, text, grid, actual_color, forecast_color, fill = self.colors
-        painter.fillRect(self.rect(), QColor(surface))
-        history = self.visible_history()
-        result = self.result
-        lower, upper = self.axis_limits or self.price_bounds()
-        values = [lower + (upper - lower) * index / 4 for index in range(5)]
-        labels = [f"{value:.2f}" if abs(value) < 1_000_000 else f"{value:.3g}" for value in values]
-        font = QFontMetricsF(painter.font())
-        left_margin = max(font.horizontalAdvance(label) for label in labels) + 24
-        top_margin = font.height() + 8
-        bottom_margin = font.height() * 2 + 12
-        chart = QRectF(left_margin, top_margin, self.width() - left_margin - 24,
-                       self.height() - top_margin - bottom_margin)
-        self.plot_area = chart
-        last = len(history) + len(result.forecast) - 1
-
-        def point(index, price):
-            return QPointF(chart.left() + chart.width() * index / last,
-                           chart.bottom() - chart.height() * (price - lower) / (upper - lower))
-
-        for value, label in zip(values, labels):
-            left, right = point(0, value), point(last, value)
-            painter.setPen(QColor(grid))
-            painter.drawLine(left, right)
-            painter.setPen(QColor(text))
-            label_x = chart.left() - font.horizontalAdvance(label) - 12
-            painter.drawText(QPointF(label_x, left.y() + font.ascent() / 2), label)
-
-        painter.save()
-        painter.setClipRect(chart.adjusted(-1, -1, 1, 1))
-        start = len(history) - 1
-        top = [point(start, history[-1])] + [
-            point(start + step, value) for step, value in enumerate(result.upper, 1)
-        ]
-        bottom = [
-            point(start + step, value) for step, value in enumerate(result.lower, 1)
-        ]
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(fill))
-        painter.drawPolygon(QPolygonF(top + list(reversed(bottom))))
-        painter.setPen(QPen(QColor(actual_color), 2))
-        painter.drawPolyline(QPolygonF([point(i, value) for i, value in enumerate(history)]))
-        painter.setPen(QPen(QColor(forecast_color), 2, Qt.PenStyle.DashLine))
-        painter.drawPolyline(QPolygonF([
-            point(start + i, value) for i, value in enumerate([history[-1], *result.forecast])
-        ]))
-        if self.selected_index is not None:
-            index = self.selected_index
-            price = history[index] if index < len(history) else result.forecast[index - len(history)]
-            location = point(index, price)
-            painter.setPen(QPen(QColor(text), 1, Qt.PenStyle.DotLine))
-            painter.drawLine(QPointF(location.x(), chart.top()), QPointF(location.x(), chart.bottom()))
-            painter.setBrush(QColor(actual_color if index < len(history) else forecast_color))
-            painter.drawEllipse(location, 4, 4)
-        painter.restore()
-        painter.setPen(QColor(text))
-        painter.drawText(
-            QPointF(chart.left(), chart.bottom() + font.height() + 6),
-            translate(self.language, "Recent observations"),
-        )
-        painter.end()
 
 
 class Dashboard(QMainWindow):
@@ -156,7 +42,7 @@ class Dashboard(QMainWindow):
         self.setWindowIcon(QIcon(str(Path(__file__).with_name("pivluma.ico"))))
         self.setWindowTitle(f"Pivluma {__version__}")
         self.setMinimumSize(760, 680)
-        self.resize(1100, 850)
+        self.resize(1280, 900)
         page = QWidget()
         self.scroll_area = QScrollArea()
         self.scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
@@ -165,7 +51,7 @@ class Dashboard(QMainWindow):
         self.setCentralWidget(self.scroll_area)
         layout = QVBoxLayout(page)
         layout.setContentsMargins(28, 22, 28, 22)
-        layout.setSpacing(14)
+        layout.setSpacing(10)
         title = QLabel("Pivluma")
         title.setObjectName("title")
         header = QHBoxLayout()
@@ -187,7 +73,6 @@ class Dashboard(QMainWindow):
             button.clicked.connect(lambda checked=False, callback=action: callback(self))
             navigation.addWidget(button)
         layout.addLayout(header)
-        layout.addLayout(navigation)
         self.update_message = ""
         self.update_label = QLabel()
         self.update_label.setWordWrap(True)
@@ -195,7 +80,7 @@ class Dashboard(QMainWindow):
         self.update_label.setFixedWidth(310)
         self.update_label.hide()
         update_row = QHBoxLayout()
-        update_row.addStretch()
+        update_row.addLayout(navigation, 1)
         update_column = QVBoxLayout()
         update_column.addWidget(self.update_button, alignment=Qt.AlignmentFlag.AlignRight)
         update_column.addWidget(self.update_label, alignment=Qt.AlignmentFlag.AlignRight)
@@ -233,6 +118,20 @@ class Dashboard(QMainWindow):
         self.dataset.setWordWrap(True)
         self.dataset.setObjectName("dataset")
         layout.addWidget(self.dataset)
+        self.workspace_stack = QStackedWidget()
+        self.workspace_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.workspace_splitter.setChildrenCollapsible(False)
+        self.workspace_tabs = QTabWidget()
+        self.workspace_stack.addWidget(self.workspace_splitter)
+        self.workspace_stack.addWidget(self.workspace_tabs)
+        layout.addWidget(self.workspace_stack, 1)
+        self.chart_panel = QWidget()
+        chart_layout = QVBoxLayout(self.chart_panel)
+        chart_layout.setContentsMargins(3, 3, 3, 3)
+        self.analyst_panel = QWidget()
+        analyst_layout = QVBoxLayout(self.analyst_panel)
+        analyst_layout.setContentsMargins(8, 3, 3, 3)
+
         chart_controls = QHBoxLayout()
         chart_controls.addWidget(self.localized_label("Chart history"))
         self.history_range = QComboBox()
@@ -246,45 +145,59 @@ class Dashboard(QMainWindow):
         axis = self.localized_button("Price axis")
         axis.clicked.connect(lambda: axis_dialog(self))
         chart_controls.addWidget(axis)
+        reset = self.localized_button("Reset chart")
+        reset.clicked.connect(self.reset_chart)
+        chart_controls.addWidget(reset)
         chart_controls.addStretch()
-        layout.addLayout(chart_controls)
+        chart_layout.addLayout(chart_controls)
         self.chart = PriceChart()
         self.history_range.currentIndexChanged.connect(
             lambda: self.chart.set_history_limit(self.history_range.currentData())
         )
-        layout.addWidget(self.chart, 1)
+        layers = QHBoxLayout()
+        for key, title in (("close", "Close"), ("average", "SMA 20"),
+                           ("forecast", "Forecast"), ("interval", "Interval")):
+            control = QCheckBox()
+            self.localize(control.setText, title)
+            control.setChecked(self.chart.layers[key])
+            control.toggled.connect(lambda enabled, key=key: self.chart.set_layer(key, enabled))
+            layers.addWidget(control)
+        layers.addStretch()
+        chart_layout.addLayout(layers)
+        chart_layout.addWidget(self.chart, 1)
         self.point_details = QLabel()
         self.point_details.setWordWrap(True)
         self.point_details.setTextFormat(Qt.TextFormat.PlainText)
-        layout.addWidget(self.point_details)
+        chart_layout.addWidget(self.point_details)
         self.chart.selected.connect(self.show_chart_point)
         self.chart_legend = self.localized_label(
             "Closing price  /  Dashed forecast  /  Shaded empirical interval"
         )
         self.chart_legend.setWordWrap(True)
-        layout.addWidget(self.chart_legend)
+        chart_layout.addWidget(self.chart_legend)
         self.metrics = QLabel()
         self.metrics.setWordWrap(True)
         self.metrics.setObjectName("metrics")
-        layout.addWidget(self.metrics)
+        chart_layout.addWidget(self.metrics)
         export = self.localized_button("Export forecast CSV")
         export.clicked.connect(self.export_forecast)
         forecast_controls.addWidget(export)
         analyst_title = self.localized_label("Local analyst")
         analyst_title.setProperty("sectionTitle", True)
-        layout.addWidget(analyst_title)
-        prompts = QHBoxLayout()
-        for label, question in (
+        analyst_layout.addWidget(analyst_title)
+        prompts = QGridLayout()
+        for index, (label, question) in enumerate((
             ("Price movement", "How did the price move?"),
             ("Forecast", "What is the forecast?"),
             ("Moving average", "What is the moving average?"),
             ("Backtest", "How accurate was the model?"),
-        ):
+            ("Visible period", "Summarize the visible period"),
+            ("Selected point", "Explain the selected point"),
+        )):
             topic = self.localized_button(label)
             topic.clicked.connect(lambda checked=False, prompt=question: self.ask_topic(prompt))
-            prompts.addWidget(topic)
-        prompts.addStretch()
-        layout.addLayout(prompts)
+            prompts.addWidget(topic, index // 2, index % 2)
+        analyst_layout.addLayout(prompts)
         analyst_controls = QHBoxLayout()
         self.question = QLineEdit()
         self.localize(self.question.setAccessibleName, "Question for the local analyst")
@@ -295,12 +208,16 @@ class Dashboard(QMainWindow):
         ask = self.localized_button("Ask")
         ask.clicked.connect(self.ask_analyst)
         analyst_controls.addWidget(ask)
-        layout.addLayout(analyst_controls)
+        analyst_layout.addLayout(analyst_controls)
         self.reply = QLabel()
         self.reply.setTextFormat(Qt.TextFormat.PlainText)
         self.reply.setWordWrap(True)
         self.reply.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        layout.addWidget(self.reply)
+        analyst_layout.addWidget(self.reply)
+        analyst_layout.addStretch()
+        self.chart.viewport_changed.connect(self.refresh_contextual_reply)
+        self.chart.selected.connect(lambda _: self.refresh_contextual_reply())
+        self.arrange_workspace()
         self.status = QLabel()
         self.status.setWordWrap(True)
         self.status.setTextFormat(Qt.TextFormat.PlainText)
@@ -344,6 +261,30 @@ class Dashboard(QMainWindow):
         self.show_sample()
         self.change_theme(self.theme)
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "workspace_stack"):
+            self.arrange_workspace()
+
+    def arrange_workspace(self):
+        wide = self.width() >= 1180
+        if wide and self.workspace_splitter.count() != 2:
+            while self.workspace_tabs.count():
+                self.workspace_tabs.removeTab(0)
+            self.workspace_splitter.addWidget(self.chart_panel)
+            self.workspace_splitter.addWidget(self.analyst_panel)
+            self.workspace_splitter.setStretchFactor(0, 3)
+            self.workspace_splitter.setStretchFactor(1, 2)
+            self.workspace_splitter.setSizes([730, 440])
+        elif not wide and self.workspace_tabs.count() != 2:
+            self.workspace_tabs.addTab(self.chart_panel, self.text("Chart"))
+            self.workspace_tabs.addTab(self.analyst_panel, self.text("Local analyst"))
+        self.workspace_stack.setCurrentWidget(self.workspace_splitter if wide else self.workspace_tabs)
+
+    def reset_chart(self):
+        self.history_range.setCurrentIndex(2)
+        self.chart.reset_view()
+
     def change_theme(self, theme):
         self.theme = theme if theme in THEMES else "dark-blue"
         colors = colors_for(self.theme, QApplication.styleHints().colorScheme())
@@ -354,22 +295,10 @@ class Dashboard(QMainWindow):
             self.settings.setValue("theme", self.theme)
 
     def show_chart_point(self, index):
-        if index is None:
-            self.point_details.setText(self.text("Click the chart to inspect a price or forecast."))
-            return
-        visible = len(self.chart.visible_history())
-        if index < visible:
-            day, close = self.chart.days[index - visible], self.chart.visible_history()[index]
-            text = self.text("{date} · Close {price:.8g}", date=day, price=close)
-        else:
-            step = index - visible
-            result = self.chart.result
-            text = self.text(
-                "Forecast step {step} · {price:.8g} · Interval [{lower:.8g}, {upper:.8g}]",
-                step=step + 1, price=result.forecast[step], lower=result.lower[step],
-                upper=result.upper[step],
-            )
-        self.point_details.setText(text)
+        self.point_details.setText(
+            self.text("Click the chart to inspect a price or forecast.")
+            if index is None else self.chart.point_text(index)
+        )
 
     def text(self, message, **values):
         return translate(self.language, message).format(**values)
@@ -392,6 +321,9 @@ class Dashboard(QMainWindow):
         self.language = self.language_picker.currentData()
         for setter, message in self.localized:
             setter(self.text(message))
+        if self.workspace_tabs.count() == 2:
+            self.workspace_tabs.setTabText(0, self.text("Chart"))
+            self.workspace_tabs.setTabText(1, self.text("Local analyst"))
         self.language_picker.setAccessibleName(self.text("Language"))
         self.chart.language = self.language
         self.chart.setAccessibleName(self.text("Closing prices and forecast interval"))
@@ -475,10 +407,12 @@ class Dashboard(QMainWindow):
     def update_quote(self):
         if self.last_quote is None:
             self.quote_label.clear()
+            self.quote_label.hide()
             return
         price, timestamp = self.last_quote
         age = (datetime.now(timezone.utc) - timestamp).total_seconds()
         note = f" · {self.text('Last received quote')}" if self.stream_lost or age >= 120 else ""
+        self.quote_label.show()
         self.quote_label.setText(f"{self.live_symbol} · {price:.8g} · "
                                  f"{timestamp.astimezone():%Y-%m-%d %H:%M:%S UTC%z}{note}")
 
@@ -546,6 +480,7 @@ class Dashboard(QMainWindow):
         self.series_symbol = symbol
         self.prices = prices
         self.chart.set_axis()
+        self.chart.history_offset = 0
         self.horizon.blockSignals(True)
         self.horizon.setMaximum(min(MAX_HORIZON, len(prices) - TRAINING_WINDOW - 9))
         self.horizon.blockSignals(False)
@@ -555,9 +490,36 @@ class Dashboard(QMainWindow):
         self.question.setText(self.text(prompt))
         self.ask_analyst()
 
+    def contextual_topic(self):
+        question = self.question.text().casefold()
+        if any(term in question for term in ("selected point", "seçili nokta", "seçilen nokta")):
+            return "point"
+        if any(term in question for term in ("visible period", "görünür dönem", "grafikteki dönem")):
+            return "period"
+        return None
+
+    def refresh_contextual_reply(self):
+        if self.reply.text() and self.contextual_topic() is not None:
+            self.ask_analyst()
+
     def ask_analyst(self):
-        self.reply.setText(answer(self.question.text(), self.series_label, self.prices,
-                                  self.chart.result, self.language))
+        topic = self.contextual_topic()
+        if topic == "point":
+            index = self.chart.selected_index
+            message = self.text("Select a point on the chart first.")
+            if index is not None:
+                message = f"{self.series_label}\n{self.chart.point_text(index)}"
+                if index >= len(self.chart.visible_history()):
+                    message += "\n" + self.text("The interval is based on past forecast errors.")
+            self.reply.setText(message)
+            return
+        prices = self.prices
+        question = self.question.text()
+        if topic == "period":
+            start, end = self.chart.bounds()
+            prices = prices[start:end]
+            question = "How did the price move?"
+        self.reply.setText(answer(question, self.series_label, prices, self.chart.result, self.language))
 
     def export_forecast(self):
         filename, _ = QFileDialog.getSaveFileName(self, self.text("Export forecast"), "forecast.csv",
@@ -587,6 +549,7 @@ class Dashboard(QMainWindow):
         self.chart.history = closes
         self.chart.days = [price.day for price in self.prices]
         self.chart.result = result
+        self.chart.hover_index = None
         self.chart.select_index(None)
         self.update_summary()
         self.reply.clear()

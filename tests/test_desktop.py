@@ -11,7 +11,8 @@ from unittest.mock import Mock, patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 try:
-    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtCore import QPoint, QPointF, Qt
+    from PySide6.QtGui import QWheelEvent
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QMessageBox
     from shiboken6 import delete
@@ -284,6 +285,70 @@ class DashboardTests(unittest.TestCase):
             window.receive_quote(100, instant)
             self.assertIn(instant.astimezone().strftime("%Y-%m-%d %H:%M:%S UTC%z"),
                           window.quote_label.text())
+        finally:
+            window.close()
+            delete(window)
+            self.application.processEvents()
+
+    def test_workspace_reflows_and_keeps_the_same_chart(self):
+        window = Dashboard(Path("unused.sqlite3"))
+        try:
+            window.resize(1320, 900)
+            window.show()
+            self.application.processEvents()
+            self.assertTrue(window.workspace_splitter.isVisible())
+            result = window.chart.result
+            window.resize(760, 680)
+            self.application.processEvents()
+            self.assertTrue(window.workspace_tabs.isVisible())
+            self.assertIs(window.chart.result, result)
+            window.workspace_tabs.setCurrentIndex(1)
+            self.assertTrue(window.reply.isVisible())
+        finally:
+            window.close()
+            delete(window)
+            self.application.processEvents()
+
+    def test_chart_viewport_and_analyst_context(self):
+        window = Dashboard(Path("unused.sqlite3"))
+        try:
+            chart = window.chart
+            chart.set_history_limit(30)
+            chart.pan_history(20)
+            self.assertEqual(len(chart.visible_history()), 30)
+            self.assertEqual(chart.visible_days()[-1], window.prices[-21].day)
+            self.assertFalse(chart.forecast_visible())
+            window.ask_topic("Summarize the visible period")
+            self.assertIn(str(window.prices[-21].day), window.reply.text())
+            chart.select_index(0)
+            window.ask_topic("Explain the selected point")
+            self.assertIn(str(chart.visible_days()[0]), window.reply.text())
+            chart.reset_view()
+            self.assertTrue(chart.forecast_visible())
+        finally:
+            window.close()
+            delete(window)
+            self.application.processEvents()
+
+    def test_chart_mouse_wheel_and_drag_change_the_visible_period(self):
+        window = Dashboard(Path("unused.sqlite3"))
+        try:
+            window.show()
+            self.application.processEvents()
+            chart = window.chart
+            center = chart.plot_area.center().toPoint()
+            wheel = QWheelEvent(
+                QPointF(center), QPointF(chart.mapToGlobal(center)), QPoint(), QPoint(0, 120),
+                Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier, Qt.ScrollPhase.NoScrollPhase, False,
+            )
+            QApplication.sendEvent(chart, wheel)
+            self.assertLess(len(chart.visible_history()), len(window.prices))
+            QTest.mousePress(chart, Qt.MouseButton.LeftButton, pos=center)
+            QTest.mouseMove(chart, center + QPoint(80, 0))
+            QTest.mouseRelease(chart, Qt.MouseButton.LeftButton, pos=center + QPoint(80, 0))
+            self.assertGreater(chart.history_offset, 0)
+            self.assertIsNone(chart.selected_index)
+            self.assertFalse(chart.forecast_visible())
         finally:
             window.close()
             delete(window)

@@ -29,6 +29,7 @@ def answer(question: str, label: str, prices: Sequence[Price], result: Analysis,
             comparison = "The trend model had the lower MAE."
         elif result.mae > result.baseline_mae:
             comparison = "The last-price baseline had the lower MAE."
+        gap = abs(result.mae - result.baseline_mae)
         if turkish:
             comparison = "İki modelin MAE değeri eşit."
             if result.mae < result.baseline_mae:
@@ -38,12 +39,12 @@ def answer(question: str, label: str, prices: Sequence[Price], result: Analysis,
             return (
                 f"{context}\n{result.origins} geçmiş test başlangıcında ortalama mutlak hata "
                 f"eğilim modeli için {result.mae:.2f}, referans için {result.baseline_mae:.2f}. "
-                f"{comparison}"
+                f"Fark {gap:.2f}. {comparison}"
             )
         return (
             f"{context}\nAcross {result.origins} walk-forward test origins, mean absolute "
             f"error was {result.mae:.2f} for the trend model and {result.baseline_mae:.2f} "
-            f"for the baseline. {comparison}"
+            f"for the baseline. The difference was {gap:.2f}. {comparison}"
         )
 
     if words & {"forecast", "forecasting", "prediction", "predict", "interval", "range", "outlook",

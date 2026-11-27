@@ -1,6 +1,17 @@
 """User-facing desktop translations."""
 
 TURKISH = {
+    "Chart": "Grafik",
+    "Reset chart": "Grafiği sıfırla",
+    "Close": "Kapanış",
+    "SMA 20": "20 gözlem ortalaması",
+    "Interval": "Tahmin aralığı",
+    "Visible period": "Görünür dönem",
+    "Selected point": "Seçili nokta",
+    "Summarize the visible period": "Görünür dönemi özetle",
+    "Explain the selected point": "Seçili noktayı açıkla",
+    "Select a point on the chart first.": "Önce grafikten bir nokta seçin.",
+    "The interval is based on past forecast errors.": "Tahmin aralığı geçmiş tahmin hatalarından hesaplanır.",
     "Settings": "Ayarlar",
     "Theme": "Tema",
     "System": "Sistem",
