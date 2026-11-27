@@ -158,11 +158,13 @@ class Dashboard(QMainWindow):
         self.quote_label.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self.quote_label)
         self.last_quote = None
+        self.stream_lost = True
         self.live_symbol = ""
         self.market = MarketFeed(self)
         self.market.history.connect(self.receive_history)
         self.market.status.connect(self.market_status.setText)
         self.market.quote.connect(self.receive_quote)
+        self.market.stream_lost.connect(self.mark_stream_lost)
         self.quote_timer = QTimer(self, interval=5000)
         self.quote_timer.timeout.connect(self.update_quote)
         self.quote_timer.start()
@@ -188,7 +190,7 @@ class Dashboard(QMainWindow):
     def stop_market(self):
         self.market.stop()
         self.market_status.setText("Twelve Data · Disconnected")
-        self.update_quote()
+        self.mark_stream_lost()
 
     def receive_history(self, symbol, prices):
         if len(prices) <= TRAINING_WINDOW + 9:
@@ -198,6 +200,7 @@ class Dashboard(QMainWindow):
 
     def receive_quote(self, price, timestamp):
         if self.last_quote is None or timestamp >= self.last_quote[1]:
+            self.stream_lost = False
             self.last_quote = price, timestamp
             self.update_quote()
 
@@ -207,12 +210,22 @@ class Dashboard(QMainWindow):
             return
         price, timestamp = self.last_quote
         age = (datetime.now(timezone.utc) - timestamp).total_seconds()
-        note = " · Last received quote" if age >= 120 else ""
+        note = " · Last received quote" if self.stream_lost or age >= 120 else ""
         self.quote_label.setText(f"{self.live_symbol} · {price:.8g} · "
                                  f"{timestamp:%Y-%m-%d %H:%M:%S UTC}{note}")
 
+    def mark_stream_lost(self):
+        self.stream_lost = True
+        self.update_quote()
+
+    def show_offline_series(self, label, prices):
+        self.last_quote = None
+        self.live_symbol = ""
+        self.stop_market()
+        self.set_series(label, prices)
+
     def show_sample(self):
-        self.set_series("Synthetic sample", sample_prices())
+        self.show_offline_series("Synthetic sample", sample_prices())
 
     def series_key(self):
         symbol = self.symbol.text().strip()
@@ -227,7 +240,7 @@ class Dashboard(QMainWindow):
                 prices = PriceStore(connection).load(symbol)
             if not prices:
                 raise ValueError(f"No stored prices for {symbol}.")
-            self.set_series(f"{symbol} · Stored CSV", prices)
+            self.show_offline_series(f"{symbol} · Stored CSV", prices)
         except (OSError, ValueError, sqlite3.Error) as error:
             self.status.setText(str(error))
 
@@ -243,7 +256,7 @@ class Dashboard(QMainWindow):
             analyze([price.close for price in prices], 1)
             with closing(sqlite3.connect(self.database)) as connection:
                 PriceStore(connection).replace(symbol, prices)
-            self.set_series(f"{symbol} · Imported CSV", prices)
+            self.show_offline_series(f"{symbol} · Imported CSV", prices)
         except (OSError, ValueError, sqlite3.Error) as error:
             self.status.setText(str(error))
 

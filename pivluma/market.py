@@ -34,6 +34,7 @@ class MarketFeed(QObject):
     history = Signal(str, object)
     status = Signal(str)
     quote = Signal(float, object)
+    stream_lost = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -109,6 +110,7 @@ class MarketFeed(QObject):
     def disconnected(self, socket):
         if socket is self.socket:
             self.heartbeat.stop()
+            self.stream_lost.emit()
             self.status.emit("Twelve Data · Disconnected. Select Connect live to retry.")
 
     def on_message(self, socket, symbol, message):

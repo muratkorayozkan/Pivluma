@@ -3,6 +3,7 @@ import sqlite3
 import tempfile
 import unittest
 from contextlib import closing
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -41,6 +42,35 @@ class DashboardTests(unittest.TestCase):
             self.assertEqual(window.reply.text(), "")
             window.question.returnPressed.emit()
             self.assertIn("3 observations ahead", window.reply.text())
+        finally:
+            window.close()
+
+    def test_switching_to_sample_stops_live_feed_and_clears_quote(self):
+        window = Dashboard(Path("unused.sqlite3"))
+        try:
+            window.live_symbol = "AAPL"
+            window.receive_history("AAPL", sample_prices())
+            window.receive_quote(123.45, datetime.now(timezone.utc))
+            self.assertIn("AAPL", window.quote_label.text())
+            with patch.object(window.market, "stop") as stop:
+                window.show_sample()
+                stop.assert_called_once()
+            self.assertEqual(window.quote_label.text(), "")
+            self.assertIn("Synthetic sample", window.dataset.text())
+        finally:
+            window.close()
+
+    def test_disconnecting_keeps_last_quote_with_timestamp(self):
+        window = Dashboard(Path("unused.sqlite3"))
+        try:
+            window.live_symbol = "AAPL"
+            now = datetime.now(timezone.utc)
+            window.receive_quote(123.45, now)
+            window.receive_quote(100, now - timedelta(seconds=1))
+            window.stop_market()
+            self.assertIn("123.45", window.quote_label.text())
+            self.assertIn("UTC", window.quote_label.text())
+            self.assertIn("Last received quote", window.quote_label.text())
         finally:
             window.close()
 
