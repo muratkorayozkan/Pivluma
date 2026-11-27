@@ -6,7 +6,7 @@ Pivluma is a Windows desktop application in development for financial forecastin
 
 The Python forecasting engine fits a rolling linear trend to the latest 20 observations. Walk-forward evaluation compares mean absolute error with a last-price baseline. Forecast intervals use empirical errors for each forecast step.
 
-The English desktop dashboard is available. The local analyst assistant, live Twelve Data integration, and Windows package are planned. Live verification requires a Twelve Data plan appropriate for the intended display use.
+The English desktop dashboard and local analyst assistant are available. Live Twelve Data integration and the Windows package are planned. Live verification requires a Twelve Data plan appropriate for the intended display use.
 
 ## Run the desktop app
 
@@ -19,6 +19,11 @@ python -m venv .venv
 ```
 
 The dashboard opens with synthetic data and shows recent closing prices, the forecast, its empirical interval, and walk-forward error against a last-price baseline. Change **Forecast steps** to update the analysis. To use your own data, enter a symbol and choose **Import CSV**. **Load saved** reopens that symbol from SQLite in the Windows application data directory. The command-line database can be selected independently with `--database`.
+
+
+## Ask the local analyst
+
+Enter an English question in **Local analyst** and select **Ask**. Try “How did the price move?”, “What is the forecast?”, or “How accurate was the model?”. Replies use the active series, date range, and forecast horizon. The assistant matches supported topics and computes answers locally, with no account or network connection required.
 
 
 ## Try offline analysis

@@ -34,6 +34,13 @@ class DashboardTests(unittest.TestCase):
             window.horizon.setValue(10)
             self.assertEqual(len(window.chart.result.forecast), 10)
             self.assertIn("Last-price MAE", window.metrics.text())
+            window.question.setText("What is the forecast?")
+            window.question.returnPressed.emit()
+            self.assertIn("10 observations ahead", window.reply.text())
+            window.horizon.setValue(3)
+            self.assertEqual(window.reply.text(), "")
+            window.question.returnPressed.emit()
+            self.assertIn("3 observations ahead", window.reply.text())
         finally:
             window.close()
 

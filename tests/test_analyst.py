@@ -1,0 +1,34 @@
+import unittest
+
+from pivluma.analyst import answer
+from pivluma.data import sample_prices
+from pivluma.forecast import analyze
+
+
+class AnalystTests(unittest.TestCase):
+    def setUp(self):
+        self.prices = sample_prices()
+        self.result = analyze([price.close for price in self.prices], 5)
+
+    def ask(self, question):
+        return answer(question, "Synthetic sample", self.prices, self.result)
+
+    def test_forecast_reports_horizon_and_range(self):
+        reply = self.ask("What is the forecast?")
+        self.assertIn("5 observations ahead", reply)
+        self.assertIn(f"{self.result.forecast[-1]:.2f}", reply)
+        self.assertIn(f"{self.result.lower[-1]:.2f}", reply)
+
+    def test_backtest_compares_against_baseline(self):
+        reply = self.ask("How accurate was the model?")
+        self.assertIn("last-price baseline had the lower MAE", reply)
+        self.assertIn(str(self.result.origins), reply)
+
+    def test_price_change_includes_source_and_period(self):
+        reply = self.ask("How did the price move?")
+        self.assertIn("Synthetic sample", reply)
+        self.assertIn(str(self.prices[0].day), reply)
+        self.assertIn(str(self.prices[-1].day), reply)
+
+    def test_unsupported_questions_get_supported_topics(self):
+        self.assertIn("supported topics", self.ask("Who runs this company?"))

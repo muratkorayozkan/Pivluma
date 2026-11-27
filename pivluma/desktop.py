@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QPushButton, QSpinBox, QVBoxLayout, QWidget,
 )
 
+from pivluma.analyst import answer
 from pivluma.data import PriceStore, read_prices, sample_prices
 from pivluma.forecast import TRAINING_WINDOW, analyze
 
@@ -78,8 +79,8 @@ class Dashboard(QMainWindow):
         super().__init__()
         self.database = database
         self.setWindowTitle("Pivluma")
-        self.setMinimumSize(760, 500)
-        self.resize(1000, 640)
+        self.setMinimumSize(760, 610)
+        self.resize(1000, 740)
         page = QWidget()
         self.setCentralWidget(page)
         layout = QVBoxLayout(page)
@@ -116,6 +117,23 @@ class Dashboard(QMainWindow):
         self.metrics = QLabel()
         self.metrics.setWordWrap(True)
         layout.addWidget(self.metrics)
+        analyst_title = QLabel("Local analyst")
+        layout.addWidget(analyst_title)
+        analyst_controls = QHBoxLayout()
+        self.question = QLineEdit()
+        self.question.setAccessibleName("Question for the local analyst")
+        self.question.setPlaceholderText("Ask about price movement, forecast, or backtest performance")
+        self.question.returnPressed.connect(self.ask_analyst)
+        analyst_controls.addWidget(self.question, 1)
+        ask = QPushButton("Ask")
+        ask.clicked.connect(self.ask_analyst)
+        analyst_controls.addWidget(ask)
+        layout.addLayout(analyst_controls)
+        self.reply = QLabel()
+        self.reply.setTextFormat(Qt.TextFormat.PlainText)
+        self.reply.setWordWrap(True)
+        self.reply.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(self.reply)
         self.status = QLabel()
         self.status.setWordWrap(True)
         self.status.setTextFormat(Qt.TextFormat.PlainText)
@@ -160,6 +178,7 @@ class Dashboard(QMainWindow):
             self.status.setText(str(error))
 
     def set_series(self, label, prices):
+        self.series_label = label
         self.prices = prices
         self.dataset.setText(f"{label}  ·  {prices[0].day} to {prices[-1].day}"
                              f"  ·  {len(prices)} observations")
@@ -167,6 +186,10 @@ class Dashboard(QMainWindow):
         self.horizon.setMaximum(min(30, len(prices) - TRAINING_WINDOW - 9))
         self.horizon.blockSignals(False)
         self.refresh()
+
+    def ask_analyst(self):
+        self.reply.setText(answer(self.question.text(), self.series_label, self.prices,
+                                  self.chart.result))
 
     def refresh(self):
         closes = [price.close for price in self.prices]
@@ -179,6 +202,7 @@ class Dashboard(QMainWindow):
             f"     |     Model MAE  {result.mae:.2f}     |     Last-price MAE  {result.baseline_mae:.2f}"
             f"     |     Test origins  {result.origins}"
         )
+        self.reply.clear()
         self.status.clear()
 
 
