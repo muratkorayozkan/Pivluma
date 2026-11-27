@@ -21,7 +21,11 @@ try {
         [Environment]::SetEnvironmentVariable('QT_QPA_PLATFORM', $previousPlatform, 'Process')
     }
 
-    $archive = 'dist/Pivluma-Windows.zip'
+    $version = & $Python -c 'from pivluma import __version__; print(__version__)'
+    if ($LASTEXITCODE -ne 0 -or $version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') {
+        throw 'Could not determine the Pivluma version.'
+    }
+    $archive = "dist/Pivluma-$version-Windows.zip"
     Compress-Archive -Path 'dist/Pivluma' -DestinationPath $archive -Force
     Get-FileHash -Algorithm SHA256 $archive
 } finally {

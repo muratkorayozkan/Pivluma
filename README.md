@@ -2,7 +2,9 @@
 
 Pivluma is a Windows desktop application in development for financial forecasting and market analysis.
 
-## Current status
+## Current release
+
+[Pivluma 0.1.0](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.1.0) is the first versioned release.
 
 The Python forecasting engine fits a rolling linear trend to the latest 20 observations. Walk-forward evaluation compares mean absolute error with a last-price baseline. Forecast intervals use empirical errors for each forecast step.
 
@@ -31,7 +33,7 @@ python -m venv .venv
 .\scripts\build-windows.ps1 -Python .\.venv\Scripts\python.exe
 ```
 
-The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
+The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.1.0-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
 
 
 ## Connect live market data
@@ -75,4 +77,4 @@ The data and forecasting tests use the Python standard library. Run the same com
 
 ## Development
 
-Commit and push directly to `main`. Update this README when features, setup instructions, or project status change.
+Commit and push directly to `main`. Update this README when features, setup instructions, or project status change. For each release, update the application version, verify the tests and Windows build, then tag the verified commit on main as vMAJOR.MINOR.PATCH and publish GitHub release notes.

@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QPushButton, QSpinBox, QVBoxLayout, QWidget,
 )
 
+from pivluma import __version__
 from pivluma.analyst import answer
 from pivluma.data import PriceStore, read_prices, sample_prices
 from pivluma.forecast import TRAINING_WINDOW, analyze
@@ -82,7 +83,7 @@ class Dashboard(QMainWindow):
     def __init__(self, database: Path):
         super().__init__()
         self.database = database
-        self.setWindowTitle("Pivluma")
+        self.setWindowTitle(f"Pivluma {__version__}")
         self.setMinimumSize(760, 680)
         self.resize(1000, 740)
         page = QWidget()
@@ -292,6 +293,7 @@ class Dashboard(QMainWindow):
 def main():
     application = QApplication(sys.argv)
     application.setApplicationName("Pivluma")
+    application.setApplicationVersion(__version__)
     application.setStyle("Fusion")
     application.setStyleSheet("""
         QWidget { background: #101722; color: #e7eef8; font-size: 14px; }
