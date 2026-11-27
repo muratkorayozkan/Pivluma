@@ -11,6 +11,10 @@ from PySide6.QtWebSockets import QWebSocket
 from pivluma.data import Price
 
 
+HISTORY_URL = "https://api.twelvedata.com/time_series"
+QUOTES_URL = "wss://ws.twelvedata.com/v1/quotes/price"
+
+
 def history_rows(payload):
     values = payload.get("values")
     if not isinstance(values, list) or not values:
@@ -59,7 +63,7 @@ class MarketFeed(QObject):
 
     def start(self, symbol, key):
         self.stop()
-        url = QUrl("https://api.twelvedata.com/time_series")
+        url = QUrl(HISTORY_URL)
         query = QUrlQuery()
         for name, value in (("symbol", symbol), ("interval", "1day"),
                             ("outputsize", "240"), ("format", "JSON")):
@@ -96,7 +100,7 @@ class MarketFeed(QObject):
         socket.disconnected.connect(lambda: self.disconnected(socket))
         socket.errorOccurred.connect(lambda _: self.disconnected(socket))
         socket.textMessageReceived.connect(lambda message: self.on_message(socket, symbol, message))
-        request = QNetworkRequest(QUrl("wss://ws.twelvedata.com/v1/quotes/price"))
+        request = QNetworkRequest(QUrl(QUOTES_URL))
         request.setRawHeader(b"X-TD-APIKEY", key.encode("ascii"))
         self.status.emit("Twelve Data · Connecting quote stream")
         self.subscription_deadline.start()

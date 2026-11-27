@@ -71,7 +71,7 @@ From the repository root, with Python 3.10 or later:
 python -m unittest discover -s tests
 ```
 
-The data and forecasting tests use the Python standard library. Run the same command with the desktop dependencies installed to include the Qt tests.
+The data and forecasting tests use the Python standard library. Run the same command with the desktop dependencies installed to include the Qt tests. The market integration test runs local REST and WebSocket servers on loopback. It verifies the history request, subscription, quote timestamp, and disconnect without a Twelve Data account.
 
 ## Development
 
