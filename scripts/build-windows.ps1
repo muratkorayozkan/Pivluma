@@ -4,8 +4,14 @@ $ErrorActionPreference = 'Stop'
 Push-Location (Join-Path $PSScriptRoot '..')
 try {
     $icon = (Resolve-Path 'pivluma/pivluma.ico').Path
+    $trustFile = & $Python -c 'import ssl; from pathlib import Path; print(Path(ssl.__file__).with_name("codex-rejected-cas.pem"))'
+    if ($LASTEXITCODE -ne 0) { throw 'Could not inspect the Python TLS runtime.' }
+    $runtimeData = @()
+    if (Test-Path -LiteralPath $trustFile -PathType Leaf) {
+        $runtimeData = @('--add-data', "${trustFile}:.")
+    }
     & $Python -m PyInstaller --noconfirm --clean --windowed --onedir --name Pivluma `
-        --paths . --icon $icon --add-data "${icon}:pivluma" --specpath build --workpath build/pyinstaller --distpath dist scripts/windows_launcher.py
+        --paths . --icon $icon --add-data "${icon}:pivluma" @runtimeData --specpath build --workpath build/pyinstaller --distpath dist scripts/windows_launcher.py
     if ($LASTEXITCODE -ne 0) { throw 'PyInstaller failed.' }
 
     $exe = (Resolve-Path 'dist/Pivluma/Pivluma.exe').Path

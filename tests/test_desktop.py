@@ -12,6 +12,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 try:
     from PySide6.QtWidgets import QApplication, QMessageBox
+    from shiboken6 import delete
 except ModuleNotFoundError as error:
     if error.name != "PySide6":
         raise
@@ -46,6 +47,8 @@ class DashboardTests(unittest.TestCase):
             self.assertIn("3 observations ahead", window.reply.text())
         finally:
             window.close()
+            delete(window)
+            self.application.processEvents()
 
     def test_switching_to_sample_stops_live_feed_and_clears_quote(self):
         window = Dashboard(Path("unused.sqlite3"))
@@ -61,6 +64,8 @@ class DashboardTests(unittest.TestCase):
             self.assertIn("Synthetic sample", window.dataset.text())
         finally:
             window.close()
+            delete(window)
+            self.application.processEvents()
 
     def test_disconnecting_keeps_last_quote_with_timestamp(self):
         window = Dashboard(Path("unused.sqlite3"))
@@ -75,6 +80,8 @@ class DashboardTests(unittest.TestCase):
             self.assertIn("Last received quote", window.quote_label.text())
         finally:
             window.close()
+            delete(window)
+            self.application.processEvents()
 
     def test_live_symbol_list_stops_before_prompting_for_api_key(self):
         window = Dashboard(Path("unused.sqlite3"))
@@ -87,6 +94,8 @@ class DashboardTests(unittest.TestCase):
             self.assertIn("Disconnected", window.market_status.text())
         finally:
             window.close()
+            delete(window)
+            self.application.processEvents()
 
     def test_export_csv_uses_the_active_forecast_horizon(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -106,6 +115,8 @@ class DashboardTests(unittest.TestCase):
                 self.assertEqual(float(rows[-1]["upper"]), window.chart.result.upper[-1])
             finally:
                 window.close()
+            delete(window)
+            self.application.processEvents()
 
     def test_language_switch_preserves_analysis_and_changes_visible_text(self):
         window = Dashboard(Path("unused.sqlite3"))
@@ -125,6 +136,8 @@ class DashboardTests(unittest.TestCase):
             self.assertFalse(window.windowIcon().isNull())
         finally:
             window.close()
+            delete(window)
+            self.application.processEvents()
 
     def test_update_handoff_requires_confirmation_and_remembers_new_version(self):
         window = Dashboard(Path("unused.sqlite3"))
@@ -144,6 +157,8 @@ class DashboardTests(unittest.TestCase):
             settings.setValue.assert_called_once_with("preferred_release", path.parent.name)
         finally:
             window.close()
+            delete(window)
+            self.application.processEvents()
 
     def test_csv_import_persists_and_saved_series_loads(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -181,3 +196,5 @@ class DashboardTests(unittest.TestCase):
                 self.assertIn("Synthetic sample", window.dataset.text())
             finally:
                 window.close()
+            delete(window)
+            self.application.processEvents()

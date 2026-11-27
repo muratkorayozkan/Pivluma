@@ -2,10 +2,13 @@
 
 import sys
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from PySide6.QtWidgets import QApplication
+from shiboken6 import delete
 
 from pivluma.desktop import Dashboard, main
+from pivluma.updates import check_update, prepare_update
 
 
 def smoke_test() -> int:
@@ -27,7 +30,17 @@ def smoke_test() -> int:
         )
     finally:
         window.close()
+        delete(window)
+        application.processEvents()
 
 
 if __name__ == "__main__":
-    raise SystemExit(smoke_test() if sys.argv[1:] == ["--smoke-test"] else main())
+    if sys.argv[1:] == ["--smoke-test"]:
+        raise SystemExit(smoke_test())
+    if sys.argv[1:] == ["--smoke-update"]:
+        update = check_update("0.4.0")
+        if update is None:
+            raise SystemExit(1)
+        with TemporaryDirectory() as directory:
+            raise SystemExit(0 if prepare_update(update, Path(directory)).is_file() else 1)
+    raise SystemExit(main())

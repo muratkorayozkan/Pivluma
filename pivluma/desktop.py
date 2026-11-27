@@ -91,7 +91,7 @@ class Dashboard(QMainWindow):
         self.setWindowIcon(QIcon(str(Path(__file__).with_name("pivluma.ico"))))
         self.setWindowTitle(f"Pivluma {__version__}")
         self.setMinimumSize(760, 680)
-        self.resize(1000, 740)
+        self.resize(1100, 850)
         page = QWidget()
         self.setCentralWidget(page)
         layout = QVBoxLayout(page)
@@ -117,8 +117,13 @@ class Dashboard(QMainWindow):
         self.update_label.setWordWrap(True)
         self.update_label.hide()
         layout.addWidget(self.update_label)
+        market_section = QVBoxLayout()
+        market_heading = self.localized_label("Market data")
+        market_heading.setProperty("sectionTitle", True)
+        market_section.addWidget(market_heading)
+        layout.addLayout(market_section)
         toolbar = QHBoxLayout()
-        layout.addLayout(toolbar)
+        market_section.addLayout(toolbar)
         self.symbol = QLineEdit()
         self.localize(self.symbol.setPlaceholderText, "Symbol")
         self.localize(self.symbol.setAccessibleName, "Symbol")
@@ -138,18 +143,33 @@ class Dashboard(QMainWindow):
         toolbar.addWidget(self.horizon)
         self.dataset = QLabel()
         self.dataset.setTextFormat(Qt.TextFormat.PlainText)
+        self.dataset.setObjectName("dataset")
         layout.addWidget(self.dataset)
         self.chart = PriceChart()
         layout.addWidget(self.chart, 1)
         layout.addWidget(self.localized_label("Closing price  /  Dashed forecast  /  Shaded empirical interval"))
         self.metrics = QLabel()
         self.metrics.setWordWrap(True)
+        self.metrics.setObjectName("metrics")
         layout.addWidget(self.metrics)
         export = self.localized_button("Export forecast CSV")
         export.clicked.connect(self.export_forecast)
         layout.addWidget(export, alignment=Qt.AlignmentFlag.AlignLeft)
         analyst_title = self.localized_label("Local analyst")
+        analyst_title.setProperty("sectionTitle", True)
         layout.addWidget(analyst_title)
+        prompts = QHBoxLayout()
+        for label, question in (
+            ("Price movement", "How did the price move?"),
+            ("Forecast", "What is the forecast?"),
+            ("Moving average", "What is the moving average?"),
+            ("Backtest", "How accurate was the model?"),
+        ):
+            topic = self.localized_button(label)
+            topic.clicked.connect(lambda checked=False, prompt=question: self.ask_topic(prompt))
+            prompts.addWidget(topic)
+        prompts.addStretch()
+        layout.addLayout(prompts)
         analyst_controls = QHBoxLayout()
         self.question = QLineEdit()
         self.localize(self.question.setAccessibleName, "Question for the local analyst")
@@ -181,15 +201,22 @@ class Dashboard(QMainWindow):
         self.market_status = QLabel("Twelve Data · Disconnected")
         self.market_status.setWordWrap(True)
         market_controls.addWidget(self.market_status, 1)
-        layout.addLayout(market_controls)
+        market_section.addLayout(market_controls)
         self.quote_label = QLabel()
         self.quote_label.setTextFormat(Qt.TextFormat.PlainText)
-        layout.addWidget(self.quote_label)
+        self.quote_label.setObjectName("quote")
+        market_section.addWidget(self.quote_label)
+        self.history_warning = QLabel()
+        self.history_warning.setWordWrap(True)
+        self.history_warning.hide()
+        market_section.addWidget(self.history_warning)
+        self.history_message = ""
         self.last_quote = None
         self.stream_lost = True
         self.live_symbol = ""
         self.market = MarketFeed(self)
         self.market.history.connect(self.receive_history)
+        self.market.history_warning.connect(self.set_history_warning)
         self.market.status.connect(self.set_market_status)
         self.market.quote.connect(self.receive_quote)
         self.market.stream_lost.connect(self.mark_stream_lost)
@@ -224,6 +251,7 @@ class Dashboard(QMainWindow):
         self.chart.setAccessibleName(self.text("Closing prices and forecast interval"))
         self.chart.update()
         self.set_market_status(self.market_message)
+        self.set_history_warning(self.history_message)
         self.update_quote()
         self.update_summary()
         self.update_label.setText(self.text(self.update_message))
@@ -234,6 +262,11 @@ class Dashboard(QMainWindow):
     def set_market_status(self, message):
         self.market_message = message
         self.market_status.setText(self.text(message))
+
+    def set_history_warning(self, message):
+        self.history_message = message
+        self.history_warning.setText(self.text(message))
+        self.history_warning.setVisible(bool(message))
 
     def connect_market(self):
         try:
@@ -249,6 +282,7 @@ class Dashboard(QMainWindow):
                 raise ValueError(self.text("Enter a valid Twelve Data API key."))
             self.last_quote = None
             self.live_symbol = symbol
+            self.set_history_warning("")
             self.market.start(symbol, key)
             self.update_quote()
         except ValueError as error:
@@ -289,6 +323,7 @@ class Dashboard(QMainWindow):
         self.last_quote = None
         self.live_symbol = ""
         self.stop_market()
+        self.set_history_warning("")
         self.set_series(label, prices, symbol)
 
     def show_sample(self):
@@ -347,6 +382,10 @@ class Dashboard(QMainWindow):
         self.horizon.setMaximum(min(30, len(prices) - TRAINING_WINDOW - 9))
         self.horizon.blockSignals(False)
         self.refresh()
+
+    def ask_topic(self, prompt):
+        self.question.setText(self.text(prompt))
+        self.ask_analyst()
 
     def ask_analyst(self):
         self.reply.setText(answer(self.question.text(), self.series_label, self.prices,
@@ -411,6 +450,10 @@ def main():
     application.setStyleSheet("""
         QWidget { background: #101722; color: #e7eef8; font-size: 14px; }
         QLabel#title { font-size: 31px; font-weight: 700; }
+        QLabel[sectionTitle="true"] { font-size: 17px; font-weight: 650; color: #d9e9fb; }
+        QLabel#dataset { font-size: 16px; font-weight: 650; }
+        QLabel#metrics { background: #182436; border: 1px solid #30455e; border-radius: 8px; padding: 10px; }
+        QLabel#quote { color: #72e5c8; font-weight: 650; }
         QPushButton, QLineEdit, QSpinBox {
             background: #1c293a; border: 1px solid #40526c; border-radius: 6px; padding: 6px 10px;
         }

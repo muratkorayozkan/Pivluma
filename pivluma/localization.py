@@ -1,6 +1,21 @@
 """User-facing desktop translations."""
 
 TURKISH = {
+    "Market data": "Piyasa verisi",
+    "Price movement": "Fiyat hareketi",
+    "Forecast": "Tahmin",
+    "Moving average": "Hareketli ortalama",
+    "Backtest": "Geçmiş test",
+    "How did the price move?": "Fiyat nasıl değişti?",
+    "What is the forecast?": "Tahmin nedir?",
+    "What is the moving average?": "Hareketli ortalama nedir?",
+    "How accurate was the model?": "Model ne kadar başarılı?",
+    "GitHub rate limit reached. Try again later.": "GitHub istek sınırına ulaşıldı. Daha sonra yeniden deneyin.",
+    "GitHub rejected the update request. Try again or use Releases.": "GitHub güncelleme isteğini reddetti. Yeniden deneyin veya Releases sayfasını kullanın.",
+    "GitHub certificate could not be verified. Check Windows certificates and time.": "GitHub sertifikası doğrulanamadı. Windows sertifikalarını ve saati kontrol edin.",
+    "Could not reach GitHub. Check your network and try again.": "GitHub’a ulaşılamadı. Ağ bağlantısını kontrol edip yeniden deneyin.",
+    "Could not write the update package. Check disk space and access.": "Güncelleme paketi yazılamadı. Disk alanını ve erişimi kontrol edin.",
+    "Update package could not be verified. Try again or use Releases.": "Güncelleme paketi doğrulanamadı. Yeniden deneyin veya Releases sayfasını kullanın.",
     "Check for updates": "Güncellemeleri denetle",
     "Checking and preparing updates…": "Güncellemeler denetleniyor ve hazırlanıyor…",
     "No newer verified update found.": "Daha yeni doğrulanmış bir güncelleme bulunamadı.",

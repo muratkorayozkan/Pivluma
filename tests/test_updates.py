@@ -5,8 +5,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 from zipfile import ZipFile
+from urllib.error import HTTPError, URLError
+import ssl
 
-from pivluma.updates import ROOT, latest_update, prepare_update
+from pivluma.updates import ROOT, check_update, latest_update, prepare_update, update_error_message
 
 
 def package(entries):
@@ -35,6 +37,15 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(update.version, "0.6.0")
         payload["assets"][0]["browser_download_url"] = "https://example.com/archive"
         self.assertIsNone(latest_update(payload, "0.5.0"))
+
+    def test_no_release_and_connection_failures_have_distinct_results(self):
+        with patch("pivluma.updates.urlopen", side_effect=HTTPError("", 404, "", {}, None)):
+            self.assertIsNone(check_update("0.5.0"))
+        self.assertIn("rate limit", update_error_message(HTTPError("", 429, "", {}, None)))
+        self.assertIn("certificate", update_error_message(
+            URLError(ssl.SSLCertVerificationError("untrusted"))
+        ))
+        self.assertIn("network", update_error_message(URLError("offline")))
 
     def test_package_is_prepared_without_overwriting_existing_versions(self):
         data = package({"Pivluma/Pivluma.exe": b"exe", "Pivluma/_internal/python.dll": b"dll"})

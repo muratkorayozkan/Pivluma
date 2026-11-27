@@ -8,7 +8,7 @@ from PySide6.QtCore import QObject, QProcess, QTimer, Signal
 from PySide6.QtWidgets import QMessageBox
 
 from pivluma import __version__
-from pivluma.updates import VERSION, check_update, prepare_update
+from pivluma.updates import VERSION, check_update, prepare_update, update_error_message
 
 
 class UpdateController(QObject):
@@ -58,8 +58,8 @@ class UpdateController(QObject):
                 self.completed.emit("No newer verified update found.", None)
                 return
             path = prepare_update(update, self.directory)
-        except (AttributeError, BadZipFile, OSError, TypeError, ValueError):
-            self.completed.emit("Could not prepare the update. Try again.", None)
+        except (AttributeError, BadZipFile, OSError, TypeError, ValueError) as error:
+            self.completed.emit(update_error_message(error), None)
             return
         self.completed.emit("Update ready.", (update.version, path))
 

@@ -36,6 +36,7 @@ def quote_event(payload, symbol):
 
 class MarketFeed(QObject):
     history = Signal(str, object)
+    history_warning = Signal(str)
     status = Signal(str)
     quote = Signal(float, object)
     stream_lost = Signal()
@@ -83,12 +84,17 @@ class MarketFeed(QObject):
             return
         self.pending = None
         if reply.error() != QNetworkReply.NetworkError.NoError:
-            self.status.emit("Twelve Data · History request failed. Check connection and account access.")
+            message = "Twelve Data · History request failed. Check connection and account access."
+            self.history_warning.emit(message)
+            self.open_stream(symbol, key)
             return
         try:
             prices = history_rows(json.loads(bytes(reply.readAll())))
         except (AttributeError, KeyError, TypeError, ValueError):
-            self.status.emit("Twelve Data · Daily history unavailable. Check symbol and account access.")
+            self.history_warning.emit(
+                "Twelve Data · Daily history unavailable. Check symbol and account access."
+            )
+            self.open_stream(symbol, key)
             return
         self.history.emit(symbol, prices)
         self.open_stream(symbol, key)

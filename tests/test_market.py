@@ -1,8 +1,9 @@
 import unittest
 from datetime import datetime, timezone
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 try:
+    from PySide6.QtNetwork import QNetworkReply
     from pivluma.market import MarketFeed, history_rows, quote_event
 except ModuleNotFoundError as error:
     if not (error.name or "").startswith("PySide6"):
@@ -11,6 +12,18 @@ except ModuleNotFoundError as error:
 
 
 class MarketTests(unittest.TestCase):
+    def test_history_failure_still_attempts_quote_subscription(self):
+        feed = MarketFeed()
+        reply = Mock()
+        reply.error.return_value = QNetworkReply.NetworkError.ContentAccessDenied
+        feed.pending = reply
+        statuses = []
+        feed.history_warning.connect(statuses.append)
+        with patch.object(feed, "open_stream") as connect:
+            feed.finish_history(reply, "AAPL", "test-key")
+        connect.assert_called_once_with("AAPL", "test-key")
+        self.assertIn("History request failed", statuses[-1])
+
     def test_history_is_sorted(self):
         rows = history_rows({"values": [
             {"datetime": "2026-01-02", "close": "102"},

@@ -13,6 +13,13 @@ class AnalystTests(unittest.TestCase):
     def ask(self, question):
         return answer(question, "Synthetic sample", self.prices, self.result)
 
+    def test_moving_average_uses_latest_twenty_closes(self):
+        expected = sum(price.close for price in self.prices[-20:]) / 20
+        self.assertIn(f"{expected:.2f}", self.ask("What is the moving average?"))
+        reply = answer("Hareketli ortalama nedir?", "DEMO", self.prices, self.result, "tr")
+        self.assertIn("20 gözlem", reply)
+        self.assertIn(f"{expected:.2f}", reply)
+
     def test_forecast_reports_horizon_and_range(self):
         reply = self.ask("What is the forecast?")
         self.assertIn("5 observations ahead", reply)

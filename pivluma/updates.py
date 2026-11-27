@@ -4,11 +4,13 @@ import hashlib
 import json
 import re
 import shutil
+import ssl
 import stat
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
-from time import monotonic
+from time import monotonic, sleep
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from uuid import uuid4
 from zipfile import ZipFile
@@ -56,8 +58,38 @@ def check_update(current_version: str) -> Update | None:
     request = Request(LATEST_API, headers={
         "Accept": "application/vnd.github+json", "User-Agent": "Pivluma",
     })
-    with urlopen(request, timeout=15) as response:
-        return latest_update(json.loads(response.read(2 * 1024 * 1024)), current_version)
+    for attempt in range(2):
+        try:
+            with urlopen(request, timeout=15) as response:
+                return latest_update(json.loads(response.read(2 * 1024 * 1024)), current_version)
+        except HTTPError as error:
+            if error.code == 404:
+                return None
+            if attempt or error.code not in {502, 503, 504}:
+                raise
+        except (URLError, TimeoutError) as error:
+            if attempt or isinstance(getattr(error, "reason", None), ssl.SSLCertVerificationError):
+                raise
+        sleep(.5)
+    return None
+
+
+def update_error_message(error: Exception) -> str:
+    if isinstance(error, HTTPError):
+        if error.code == 429 or (error.code == 403 and (
+            error.headers.get("X-RateLimit-Remaining") == "0" or error.headers.get("Retry-After")
+        )):
+            return "GitHub rate limit reached. Try again later."
+        return "GitHub rejected the update request. Try again or use Releases."
+    if isinstance(error, ssl.SSLCertVerificationError) or isinstance(
+        getattr(error, "reason", None), ssl.SSLCertVerificationError
+    ):
+        return "GitHub certificate could not be verified. Check Windows certificates and time."
+    if isinstance(error, (URLError, TimeoutError)):
+        return "Could not reach GitHub. Check your network and try again."
+    if isinstance(error, OSError):
+        return "Could not write the update package. Check disk space and access."
+    return "Update package could not be verified. Try again or use Releases."
 
 
 def _extract(archive_path: Path, output: Path) -> None:
