@@ -11,6 +11,8 @@ from unittest.mock import Mock, patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 try:
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QMessageBox
     from shiboken6 import delete
 except ModuleNotFoundError as error:
@@ -225,6 +227,63 @@ class DashboardTests(unittest.TestCase):
             self.assertGreater(window.scroll_area.verticalScrollBar().maximum(), 0)
             window.scroll_area.ensureWidgetVisible(window.reply)
             self.assertGreater(window.scroll_area.verticalScrollBar().value(), 0)
+        finally:
+            window.close()
+            delete(window)
+            self.application.processEvents()
+
+    def test_extended_horizon_and_chart_selection(self):
+        window = Dashboard(Path("unused.sqlite3"))
+        try:
+            self.assertEqual(window.horizon.maximum(), 91)
+            window.horizon.setValue(80)
+            self.assertEqual(len(window.chart.result.forecast), 80)
+            window.chart.set_history_limit(30)
+            window.show()
+            self.application.processEvents()
+            area = window.chart.plot_area
+            x = area.left() + area.width() * 29 / 109
+            QTest.mouseClick(window.chart, Qt.MouseButton.LeftButton, pos=QPoint(round(x), round(area.center().y())))
+            self.assertIn(str(window.prices[-1].day), window.point_details.text())
+            window.chart.select_index(30)
+            self.assertIn("Forecast step 1", window.point_details.text())
+            window.chart.set_axis(50, 150)
+            self.assertEqual(window.chart.axis_limits, (50, 150))
+            window.chart.set_axis()
+            self.assertIsNone(window.chart.axis_limits)
+        finally:
+            window.close()
+            delete(window)
+            self.application.processEvents()
+
+    def test_theme_updates_chart_and_update_status_is_below_the_button(self):
+        window = Dashboard(Path("unused.sqlite3"))
+        try:
+            window.settings = Mock()
+            original_colors = window.chart.colors
+            window.change_theme("light-mint")
+            self.assertNotEqual(window.chart.colors, original_colors)
+            window.settings.setValue.assert_called_once_with("theme", "light-mint")
+            window.update_button.show()
+            window.update_label.setText("Update ready.")
+            window.update_label.show()
+            window.show()
+            self.application.processEvents()
+            self.assertLess(window.update_button.geometry().bottom(), window.update_label.geometry().top())
+            self.assertEqual(window.update_button.geometry().right(), window.update_label.geometry().right())
+        finally:
+            window.close()
+            delete(window)
+            self.application.processEvents()
+
+    def test_quote_timestamp_uses_local_time_with_offset(self):
+        window = Dashboard(Path("unused.sqlite3"))
+        try:
+            window.live_symbol = "BTC/USD"
+            instant = datetime(2026, 11, 27, 17, 27, tzinfo=timezone.utc)
+            window.receive_quote(100, instant)
+            self.assertIn(instant.astimezone().strftime("%Y-%m-%d %H:%M:%S UTC%z"),
+                          window.quote_label.text())
         finally:
             window.close()
             delete(window)
