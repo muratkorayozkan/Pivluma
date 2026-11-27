@@ -4,11 +4,11 @@ Pivluma is a Windows desktop application in development for financial forecastin
 
 ## Current release
 
-[Pivluma 0.6.1](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.6.1) is the current release. Download the [portable Windows x64 ZIP](https://github.com/muratkorayozkan/Pivluma/releases/latest), extract it, and run Pivluma.exe.
+[Pivluma 0.7.0](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.7.0) is the current release. Download the [portable Windows x64 ZIP](https://github.com/muratkorayozkan/Pivluma/releases/latest), extract it, and run Pivluma.exe.
 
 The Python forecasting engine fits a rolling linear trend to the latest 20 observations. Walk-forward evaluation compares mean absolute error with a last-price baseline. Forecast intervals use empirical errors for each forecast step.
 
-The Turkish and English desktop dashboard and local analyst assistant are available. Twelve Data integration is available. A portable Windows package can be built from source. Live verification with a Twelve Data account is pending.
+The Turkish and English desktop dashboard and local analyst assistant are available. Kraken public crypto data and configured Twelve Data feeds are available. A portable Windows package can be built from source. Live verification with a Twelve Data account is pending.
 
 ## Run the desktop app
 
@@ -45,16 +45,18 @@ python -m venv .venv
 .\scripts\build-windows.ps1 -Python .\.venv\Scripts\python.exe
 ```
 
-The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.6.1-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
+The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.7.0-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
 
 
 ## Connect live market data
 
-Enter one symbol such as **AAPL**, **EUR/USD**, or **BTC/USD**, select **Connect live**, and enter a Twelve Data API key in the masked prompt. Use an account plan that permits display and streaming for the selected symbol. The key is used for the current connection attempt and is not saved.
+Use **Choose symbol** to browse by instrument name and code, or enter a single code manually. **Connect live** opens the picker if the symbol field is empty.
+
+**BTC/USD**, **ETH/USD**, **SOL/USD**, **XRP/USD**, and **DOGE/USD** connect directly to Kraken public market data without an account. Other symbols use Twelve Data if the installation already supplies `TWELVE_DATA_API_KEY` in the process environment and the account permits display and streaming for that symbol. The app never prompts for a key.
 
 The chart uses daily REST history. If daily history is unavailable, Pivluma still tries the quote subscription and displays the history error separately from the stream state. The WebSocket quote is displayed separately with its UTC timestamp and marked as the last received quote after two minutes. Disconnecting keeps the latest quote visible and labels it as the last received quote. Switching to a sample or CSV series closes the live connection and clears the quote. The WebSocket connection and subscription acknowledgement have a combined 15-second deadline. If the provider rejects the subscription or the deadline expires, the socket closes and **Connect live** can retry. Once the subscription is accepted, the app can wait for a quote while the market is quiet. Sample data and CSV analysis work offline.
 
-Provider references: [REST API](https://twelvedata.com/docs), [WebSocket API](https://twelvedata.com/docs/websocket/websocket-getting-started), and [plans](https://twelvedata.com/pricing).
+Provider references: [Kraken daily history](https://docs.kraken.com/api/docs/rest-api/get-ohlc-data), [Kraken ticker stream](https://docs.kraken.com/api/docs/websocket-v2/ticker), [REST API](https://twelvedata.com/docs), [WebSocket API](https://twelvedata.com/docs/websocket/websocket-getting-started), and [plans](https://twelvedata.com/pricing).
 
 
 ## Ask the local analyst

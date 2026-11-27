@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 try:
     from PySide6.QtNetwork import QNetworkReply
-    from pivluma.market import MarketFeed, history_rows, quote_event
+    from pivluma.market import MarketFeed, history_rows, kraken_history_rows, kraken_quote_event, quote_event
 except ModuleNotFoundError as error:
     if not (error.name or "").startswith("PySide6"):
         raise
@@ -23,6 +23,21 @@ class MarketTests(unittest.TestCase):
             feed.finish_history(reply, "AAPL", "test-key")
         connect.assert_called_once_with("AAPL", "test-key")
         self.assertIn("History request failed", statuses[-1])
+
+    def test_kraken_history_omits_incomplete_daily_candle(self):
+        rows = kraken_history_rows({"result": {
+            "last": 1700086400,
+            "XBTUSD": [[1700000000, 0, 0, 0, "123"], [1700086400, 0, 0, 0, "456"]],
+        }})
+        self.assertEqual([row.close for row in rows], [123])
+
+    def test_kraken_ticker_uses_exchange_timestamp(self):
+        event = {"channel": "ticker", "data": [{
+            "symbol": "BTC/USD", "last": 123, "timestamp": "2026-01-01T01:02:03Z",
+        }]}
+        self.assertEqual(kraken_quote_event(event, "BTC/USD"),
+                         (123, datetime(2026, 1, 1, 1, 2, 3, tzinfo=timezone.utc)))
+        self.assertIsNone(kraken_quote_event(event, "ETH/USD"))
 
     def test_history_is_sorted(self):
         rows = history_rows({"values": [

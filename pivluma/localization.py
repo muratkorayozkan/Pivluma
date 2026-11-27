@@ -1,6 +1,13 @@
 """User-facing desktop translations."""
 
 TURKISH = {
+    "Choose symbol": "Sembol seç",
+    "Market instrument": "Piyasa varlığı",
+    "Euro / US dollar": "Euro / ABD doları",
+    "US dollar / Turkish lira": "ABD doları / Türk lirası",
+    "Live access is not configured for this symbol. Choose a public crypto symbol.":
+        "Bu sembol için canlı veri erişimi yapılandırılmamış. Herkese açık bir kripto sembolü seçin.",
+    "Kraken daily history": "Kraken günlük geçmişi",
     "Market data": "Piyasa verisi",
     "Price movement": "Fiyat hareketi",
     "Forecast": "Tahmin",
@@ -84,4 +91,9 @@ TURKISH = {
 
 
 def translate(language: str, message: str) -> str:
-    return TURKISH.get(message, message) if language == "tr" else message
+    if language != "tr":
+        return message
+    if message.startswith("Kraken ·"):
+        translated = TURKISH.get(message.replace("Kraken", "Twelve Data", 1))
+        return translated.replace("Twelve Data", "Kraken", 1) if translated else message
+    return TURKISH.get(message, message)

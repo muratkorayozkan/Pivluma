@@ -83,6 +83,53 @@ class DashboardTests(unittest.TestCase):
             delete(window)
             self.application.processEvents()
 
+    def test_empty_live_symbol_opens_picker_and_uses_the_selected_code(self):
+        window = Dashboard(Path("unused.sqlite3"))
+        try:
+            with patch("pivluma.desktop.QInputDialog.getItem",
+                       return_value=("Bitcoin (BTC/USD)", True)) as picker, patch(
+                "pivluma.desktop.QInputDialog.getText"
+            ) as prompt, patch.object(window.market, "start") as connect:
+                window.connect_market()
+            self.assertIn("Apple (AAPL)", picker.call_args.args[3])
+            self.assertIn("Bitcoin (BTC/USD)", picker.call_args.args[3])
+            self.assertEqual(window.symbol.text(), "BTC/USD")
+            prompt.assert_not_called()
+            connect.assert_called_once_with("BTC/USD", None)
+        finally:
+            window.close()
+            delete(window)
+            self.application.processEvents()
+
+    def test_stock_uses_configured_access_without_prompting(self):
+        window = Dashboard(Path("unused.sqlite3"))
+        try:
+            window.symbol.setText("aapl")
+            with patch.dict("os.environ", {"TWELVE_DATA_API_KEY": "test-key"}), patch(
+                "pivluma.desktop.QInputDialog.getText"
+            ) as prompt, patch.object(window.market, "start") as connect:
+                window.connect_market()
+            prompt.assert_not_called()
+            connect.assert_called_once_with("AAPL", "test-key")
+        finally:
+            window.close()
+            delete(window)
+            self.application.processEvents()
+
+    def test_canceling_live_symbol_picker_does_not_prompt_for_key(self):
+        window = Dashboard(Path("unused.sqlite3"))
+        try:
+            with patch("pivluma.desktop.QInputDialog.getItem", return_value=("", False)), patch(
+                "pivluma.desktop.QInputDialog.getText", return_value=("", False)
+            ) as prompt:
+                window.connect_market()
+            prompt.assert_not_called()
+            self.assertEqual(window.symbol.text(), "")
+        finally:
+            window.close()
+            delete(window)
+            self.application.processEvents()
+
     def test_live_symbol_list_stops_before_prompting_for_api_key(self):
         window = Dashboard(Path("unused.sqlite3"))
         try:

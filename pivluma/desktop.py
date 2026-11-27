@@ -1,6 +1,7 @@
 """Offline market-analysis dashboard."""
 
 import csv
+import os
 import sqlite3
 import sys
 from contextlib import closing
@@ -19,7 +20,7 @@ from pivluma.analyst import answer
 from pivluma.data import PriceStore, read_prices, sample_prices
 from pivluma.forecast import TRAINING_WINDOW, analyze
 from pivluma.localization import translate
-from pivluma.market import MarketFeed
+from pivluma.market import PUBLIC_SYMBOLS, MarketFeed
 from pivluma.update_ui import UpdateController
 
 
@@ -221,6 +222,9 @@ class Dashboard(QMainWindow):
         connect.clicked.connect(self.connect_market)
         disconnect = self.localized_button("Disconnect")
         disconnect.clicked.connect(self.stop_market)
+        choose = self.localized_button("Choose symbol")
+        choose.clicked.connect(self.choose_symbol)
+        market_controls.addWidget(choose)
         market_controls.addWidget(connect)
         market_controls.addWidget(disconnect)
         self.market_status = QLabel("Twelve Data · Disconnected")
@@ -294,18 +298,38 @@ class Dashboard(QMainWindow):
         self.history_warning.setText(self.text(message))
         self.history_warning.setVisible(bool(message))
 
+    def choose_symbol(self):
+        instruments = {
+            **PUBLIC_SYMBOLS,
+            "AAPL": "Apple", "MSFT": "Microsoft", "NVDA": "NVIDIA", "TSLA": "Tesla",
+            "SPY": "SPDR S&P 500 ETF", "EUR/USD": "Euro / US dollar",
+            "USD/TRY": "US dollar / Turkish lira",
+        }
+        choices = {f"{self.text(name)} ({symbol})": symbol for symbol, name in instruments.items()}
+        current = self.symbol.text().strip().upper()
+        index = next((i for i, symbol in enumerate(choices.values()) if symbol == current), 0)
+        choice, accepted = QInputDialog.getItem(
+            self, self.text("Choose symbol"), self.text("Market instrument"), list(choices), index, False
+        )
+        if accepted:
+            self.symbol.setText(choices[choice])
+            return choices[choice]
+        return None
+
     def connect_market(self):
         try:
-            symbol = self.series_key().upper()
+            symbol = self.symbol.text().strip().upper() or self.choose_symbol()
+            if symbol is None:
+                return
             if ',' in symbol:
                 raise ValueError(self.text("Enter one symbol for live data, such as AAPL or EUR/USD."))
-            key, accepted = QInputDialog.getText(self, "Twelve Data", self.text("API key"),
-                                                   QLineEdit.EchoMode.Password)
-            if not accepted:
-                return
-            key = key.strip()
-            if not key or not key.isascii() or not key.isprintable() or " " in key:
-                raise ValueError(self.text("Enter a valid Twelve Data API key."))
+            key = None
+            if symbol not in PUBLIC_SYMBOLS:
+                key = os.environ.get("TWELVE_DATA_API_KEY", "").strip()
+                if not key or not key.isascii() or not key.isprintable() or " " in key:
+                    raise ValueError(self.text(
+                        "Live access is not configured for this symbol. Choose a public crypto symbol."
+                    ))
             self.last_quote = None
             self.live_symbol = symbol
             self.set_history_warning("")
@@ -316,14 +340,14 @@ class Dashboard(QMainWindow):
 
     def stop_market(self):
         self.market.stop()
-        self.set_market_status("Twelve Data · Disconnected")
+        self.set_market_status(self.market.with_provider("Twelve Data · Disconnected"))
         self.mark_stream_lost()
 
     def receive_history(self, symbol, prices):
         if len(prices) <= TRAINING_WINDOW + 9:
             self.status.setText(self.text("Twelve Data returned too few daily observations for a forecast."))
             return
-        self.set_series("Twelve Data daily history", prices, symbol)
+        self.set_series(self.market.with_provider("Twelve Data daily history"), prices, symbol)
 
     def receive_quote(self, price, timestamp):
         if self.last_quote is None or timestamp >= self.last_quote[1]:
