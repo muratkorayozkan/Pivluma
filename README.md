@@ -6,7 +6,7 @@ Pivluma is a Windows desktop application in development for financial forecastin
 
 The Python forecasting engine fits a rolling linear trend to the latest 20 observations. Walk-forward evaluation compares mean absolute error with a last-price baseline. Forecast intervals use empirical errors for each forecast step.
 
-The English desktop dashboard and local analyst assistant are available. Live Twelve Data integration and the Windows package are planned. Live verification requires a Twelve Data plan appropriate for the intended display use.
+The English desktop dashboard and local analyst assistant are available. Twelve Data integration is available. A live account check and the Windows package are pending.
 
 ## Run the desktop app
 
@@ -19,6 +19,15 @@ python -m venv .venv
 ```
 
 The dashboard opens with synthetic data and shows recent closing prices, the forecast, its empirical interval, and walk-forward error against a last-price baseline. Change **Forecast steps** to update the analysis. To use your own data, enter a symbol and choose **Import CSV**. **Load saved** reopens that symbol from SQLite in the Windows application data directory. The command-line database can be selected independently with `--database`.
+
+
+## Connect live market data
+
+Enter a symbol such as **AAPL**, **EUR/USD**, or **BTC/USD**, select **Connect live**, and enter a Twelve Data API key in the masked prompt. Use an account plan that permits display and streaming for the selected symbol. The key is used for the current connection attempt and is not saved.
+
+The chart uses daily REST history. The WebSocket quote is displayed separately with its UTC timestamp and marked as the last received quote after two minutes. Disconnecting keeps the latest quote visible for the current session. Reconnect with **Connect live**. Sample data and CSV analysis work offline.
+
+Provider references: [REST API](https://twelvedata.com/docs), [WebSocket API](https://twelvedata.com/docs/websocket/websocket-getting-started), and [plans](https://twelvedata.com/pricing).
 
 
 ## Ask the local analyst

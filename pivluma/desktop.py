@@ -3,18 +3,22 @@
 import sqlite3
 import sys
 from contextlib import closing
+from datetime import datetime, timezone
 from pathlib import Path
 
-from PySide6.QtCore import QPointF, QRectF, QStandardPaths, Qt
+from PySide6.QtCore import QPointF, QRectF, QStandardPaths, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import (
-    QApplication, QFileDialog, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
+    QApplication, QFileDialog, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow,
     QPushButton, QSpinBox, QVBoxLayout, QWidget,
 )
 
 from pivluma.analyst import answer
 from pivluma.data import PriceStore, read_prices, sample_prices
 from pivluma.forecast import TRAINING_WINDOW, analyze
+
+
+from pivluma.market import MarketFeed
 
 
 class PriceChart(QWidget):
@@ -79,7 +83,7 @@ class Dashboard(QMainWindow):
         super().__init__()
         self.database = database
         self.setWindowTitle("Pivluma")
-        self.setMinimumSize(760, 610)
+        self.setMinimumSize(760, 680)
         self.resize(1000, 740)
         page = QWidget()
         self.setCentralWidget(page)
@@ -139,7 +143,73 @@ class Dashboard(QMainWindow):
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.status.setStyleSheet("color: #ffc181")
         layout.addWidget(self.status)
+        market_controls = QHBoxLayout()
+        connect = QPushButton("Connect live")
+        connect.clicked.connect(self.connect_market)
+        disconnect = QPushButton("Disconnect")
+        disconnect.clicked.connect(self.stop_market)
+        market_controls.addWidget(connect)
+        market_controls.addWidget(disconnect)
+        self.market_status = QLabel("Twelve Data · Disconnected")
+        self.market_status.setWordWrap(True)
+        market_controls.addWidget(self.market_status, 1)
+        layout.addLayout(market_controls)
+        self.quote_label = QLabel()
+        self.quote_label.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addWidget(self.quote_label)
+        self.last_quote = None
+        self.live_symbol = ""
+        self.market = MarketFeed(self)
+        self.market.history.connect(self.receive_history)
+        self.market.status.connect(self.market_status.setText)
+        self.market.quote.connect(self.receive_quote)
+        self.quote_timer = QTimer(self, interval=5000)
+        self.quote_timer.timeout.connect(self.update_quote)
+        self.quote_timer.start()
         self.show_sample()
+
+    def connect_market(self):
+        try:
+            symbol = self.series_key().upper()
+            key, accepted = QInputDialog.getText(self, "Twelve Data", "API key",
+                                                   QLineEdit.EchoMode.Password)
+            if not accepted:
+                return
+            key = key.strip()
+            if not key or not key.isascii() or not key.isprintable() or " " in key:
+                raise ValueError("Enter a valid Twelve Data API key.")
+            self.last_quote = None
+            self.live_symbol = symbol
+            self.market.start(symbol, key)
+            self.update_quote()
+        except ValueError as error:
+            self.status.setText(str(error))
+
+    def stop_market(self):
+        self.market.stop()
+        self.market_status.setText("Twelve Data · Disconnected")
+        self.update_quote()
+
+    def receive_history(self, symbol, prices):
+        if len(prices) <= TRAINING_WINDOW + 9:
+            self.status.setText("Twelve Data returned too few daily observations for a forecast.")
+            return
+        self.set_series(f"{symbol} · Twelve Data daily history", prices)
+
+    def receive_quote(self, price, timestamp):
+        if self.last_quote is None or timestamp >= self.last_quote[1]:
+            self.last_quote = price, timestamp
+            self.update_quote()
+
+    def update_quote(self):
+        if self.last_quote is None:
+            self.quote_label.clear()
+            return
+        price, timestamp = self.last_quote
+        age = (datetime.now(timezone.utc) - timestamp).total_seconds()
+        note = " · Last received quote" if age >= 120 else ""
+        self.quote_label.setText(f"{self.live_symbol} · {price:.8g} · "
+                                 f"{timestamp:%Y-%m-%d %H:%M:%S UTC}{note}")
 
     def show_sample(self):
         self.set_series("Synthetic sample", sample_prices())
