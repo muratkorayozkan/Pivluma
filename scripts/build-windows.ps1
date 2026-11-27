@@ -1,0 +1,29 @@
+param([string]$Python = 'python')
+
+$ErrorActionPreference = 'Stop'
+Push-Location (Join-Path $PSScriptRoot '..')
+try {
+    & $Python -m PyInstaller --noconfirm --clean --windowed --onedir --name Pivluma `
+        --paths . --specpath build --workpath build/pyinstaller --distpath dist scripts/windows_launcher.py
+    if ($LASTEXITCODE -ne 0) { throw 'PyInstaller failed.' }
+
+    $exe = (Resolve-Path 'dist/Pivluma/Pivluma.exe').Path
+    $previousPlatform = [Environment]::GetEnvironmentVariable('QT_QPA_PLATFORM', 'Process')
+    try {
+        $env:QT_QPA_PLATFORM = 'offscreen'
+        $process = Start-Process -FilePath $exe -ArgumentList '--smoke-test' -PassThru -WindowStyle Hidden
+        if (-not $process.WaitForExit(30000)) {
+            $process.Kill()
+            throw 'Packaged app smoke test timed out.'
+        }
+        if ($process.ExitCode -ne 0) { throw "Packaged app smoke test failed ($($process.ExitCode))." }
+    } finally {
+        [Environment]::SetEnvironmentVariable('QT_QPA_PLATFORM', $previousPlatform, 'Process')
+    }
+
+    $archive = 'dist/Pivluma-Windows.zip'
+    Compress-Archive -Path 'dist/Pivluma' -DestinationPath $archive -Force
+    Get-FileHash -Algorithm SHA256 $archive
+} finally {
+    Pop-Location
+}
