@@ -51,7 +51,9 @@ TURKISH = {
     "Export forecast": "Tahmini dışa aktar",
     "Forecast exported to {path}": "Tahmin kaydedildi: {path}",
     "Could not export forecast: {error}": "Tahmin dışa aktarılamadı: {error}",
-    "No stored prices for {symbol}.": "{symbol} için kayıtlı fiyat bulunamadı.",
+    "Saved symbol": "Kayıtlı sembol",
+    "Import a CSV before opening a saved series.": "Kayıtlı seri açmadan önce bir CSV dosyası içe aktarın.",
+    "Not enough stored prices for {symbol}.": "{symbol} için yeterli kayıtlı fiyat yok.",
     "Could not load prices.": "Fiyatlar yüklenemedi.",
     "Could not import CSV.": "CSV içe aktarılamadı."
 }

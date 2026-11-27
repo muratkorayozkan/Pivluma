@@ -292,11 +292,23 @@ class Dashboard(QMainWindow):
 
     def load_saved(self):
         try:
-            symbol = self.series_key()
             with closing(sqlite3.connect(self.database)) as connection:
-                prices = PriceStore(connection).load(symbol)
-            if not prices:
-                raise ValueError(self.text("No stored prices for {symbol}.", symbol=symbol))
+                store = PriceStore(connection)
+                symbols = store.symbols()
+                if not symbols:
+                    self.status.setText(self.text("Import a CSV before opening a saved series."))
+                    return
+                current = self.symbol.text().strip()
+                index = symbols.index(current) if current in symbols else 0
+                symbol, accepted = QInputDialog.getItem(
+                    self, self.text("Load saved"), self.text("Saved symbol"), symbols, index, False
+                )
+                if not accepted:
+                    return
+                prices = store.load(symbol)
+            if len(prices) <= TRAINING_WINDOW + 9:
+                raise ValueError(self.text("Not enough stored prices for {symbol}.", symbol=symbol))
+            self.symbol.setText(symbol)
             self.show_offline_series("Stored CSV", prices, symbol)
         except (OSError, ValueError, sqlite3.Error) as error:
             self.status.setText(str(error))

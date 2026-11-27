@@ -88,6 +88,12 @@ class PriceStore:
                 "INSERT INTO daily_prices (symbol, day, close) VALUES (?, ?, ?)", rows
             )
 
+    def symbols(self) -> list[str]:
+        rows = self.connection.execute(
+            "SELECT DISTINCT symbol FROM daily_prices ORDER BY symbol COLLATE NOCASE, symbol"
+        )
+        return [symbol for (symbol,) in rows]
+
     def load(self, symbol: str) -> list[Price]:
         rows = self.connection.execute(
             "SELECT day, close FROM daily_prices WHERE symbol = ? ORDER BY day", (symbol.strip(),)

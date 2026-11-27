@@ -143,8 +143,21 @@ class DashboardTests(unittest.TestCase):
                 self.assertEqual(window.horizon.maximum(), 1)
                 with closing(sqlite3.connect(database)) as connection:
                     self.assertEqual(PriceStore(connection).load("DEMO"), rows)
+                with closing(sqlite3.connect(database)) as connection:
+                    PriceStore(connection).replace("ALPHA", rows)
                 window.show_sample()
-                window.load_saved()
+                window.symbol.clear()
+                with patch("pivluma.desktop.QInputDialog.getItem",
+                           return_value=("DEMO", True)) as picker:
+                    window.load_saved()
+                self.assertEqual(picker.call_args.args[3], ["ALPHA", "DEMO"])
+                self.assertEqual(window.symbol.text(), "DEMO")
                 self.assertIn("Stored CSV", window.dataset.text())
+
+                window.show_sample()
+                with patch("pivluma.desktop.QInputDialog.getItem",
+                           return_value=("ALPHA", False)):
+                    window.load_saved()
+                self.assertIn("Synthetic sample", window.dataset.text())
             finally:
                 window.close()
