@@ -1,8 +1,9 @@
 import unittest
 from datetime import datetime, timezone
+from unittest.mock import Mock
 
 try:
-    from pivluma.market import history_rows, quote_event
+    from pivluma.market import MarketFeed, history_rows, quote_event
 except ModuleNotFoundError as error:
     if not (error.name or "").startswith("PySide6"):
         raise
@@ -26,3 +27,37 @@ class MarketTests(unittest.TestCase):
         self.assertIsNone(quote_event(message, "AAPL"))
         self.assertEqual(quote_event(message, "BTC/USD"),
                          (123, datetime(1970, 1, 1, tzinfo=timezone.utc)))
+
+    def test_subscription_timeout_closes_socket_and_offers_retry(self):
+        feed = MarketFeed()
+        socket = Mock()
+        feed.socket = socket
+        statuses = []
+        feed.status.connect(statuses.append)
+        feed.subscription_timeout()
+        self.assertIsNone(feed.socket)
+        socket.abort.assert_called_once()
+        self.assertIn("timed out", statuses[-1])
+        self.assertIn("retry", statuses[-1])
+
+    def test_rejected_subscription_closes_socket(self):
+        feed = MarketFeed()
+        socket = Mock()
+        feed.socket = socket
+        statuses = []
+        feed.status.connect(statuses.append)
+        feed.on_message(socket, "AAPL", '{"event":"subscribe-status","success":[]}')
+        self.assertIsNone(feed.socket)
+        socket.abort.assert_called_once()
+        self.assertIn("unavailable", statuses[-1])
+
+    def test_accepted_subscription_keeps_socket_open(self):
+        feed = MarketFeed()
+        socket = Mock()
+        feed.socket = socket
+        statuses = []
+        feed.status.connect(statuses.append)
+        feed.on_message(socket, "AAPL", '{"event":"subscribe-status","success":[{"symbol":"AAPL"}]}')
+        self.assertIs(feed.socket, socket)
+        socket.abort.assert_not_called()
+        self.assertIn("Awaiting first quote", statuses[-1])

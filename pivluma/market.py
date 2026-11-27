@@ -43,6 +43,8 @@ class MarketFeed(QObject):
         self.socket = None
         self.heartbeat = QTimer(self, interval=10000)
         self.heartbeat.timeout.connect(self.send_heartbeat)
+        self.subscription_deadline = QTimer(self, interval=15000, singleShot=True)
+        self.subscription_deadline.timeout.connect(self.subscription_timeout)
 
     def stop(self):
         reply, self.pending = self.pending, None
@@ -50,6 +52,7 @@ class MarketFeed(QObject):
             reply.abort()
         socket, self.socket = self.socket, None
         self.heartbeat.stop()
+        self.subscription_deadline.stop()
         if socket is not None:
             socket.abort()
             socket.deleteLater()
@@ -96,6 +99,7 @@ class MarketFeed(QObject):
         request = QNetworkRequest(QUrl("wss://ws.twelvedata.com/v1/quotes/price"))
         request.setRawHeader(b"X-TD-APIKEY", key.encode("ascii"))
         self.status.emit("Twelve Data · Connecting quote stream")
+        self.subscription_deadline.start()
         socket.open(request)
 
     def subscribe(self, socket, symbol):
@@ -109,9 +113,16 @@ class MarketFeed(QObject):
 
     def disconnected(self, socket):
         if socket is self.socket:
-            self.heartbeat.stop()
-            self.stream_lost.emit()
-            self.status.emit("Twelve Data · Disconnected. Select Connect live to retry.")
+            self.end_stream("Disconnected.")
+
+    def subscription_timeout(self):
+        if self.socket is not None:
+            self.end_stream("Quote subscription timed out.")
+
+    def end_stream(self, reason):
+        self.stop()
+        self.stream_lost.emit()
+        self.status.emit(f"Twelve Data · {reason} Select Connect live to retry.")
 
     def on_message(self, socket, symbol, message):
         if socket is not self.socket:
@@ -120,10 +131,14 @@ class MarketFeed(QObject):
             payload = json.loads(message)
             if payload.get("event") == "subscribe-status":
                 accepted = any(row.get("symbol") == symbol for row in payload.get("success", []))
-                self.status.emit("Twelve Data · Awaiting first quote" if accepted else
-                                 "Twelve Data · Subscription unavailable for this symbol or plan")
+                if not accepted:
+                    self.end_stream("Subscription unavailable for this symbol or plan.")
+                    return
+                self.subscription_deadline.stop()
+                self.status.emit("Twelve Data · Awaiting first quote")
             quote = quote_event(payload, symbol)
             if quote is not None:
+                self.subscription_deadline.stop()
                 self.status.emit('Twelve Data · Quote stream connected')
                 self.quote.emit(*quote)
         except (AttributeError, KeyError, OverflowError, OSError, TypeError, ValueError):
