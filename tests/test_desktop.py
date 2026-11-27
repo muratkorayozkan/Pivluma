@@ -74,6 +74,18 @@ class DashboardTests(unittest.TestCase):
         finally:
             window.close()
 
+    def test_live_symbol_list_stops_before_prompting_for_api_key(self):
+        window = Dashboard(Path("unused.sqlite3"))
+        try:
+            window.symbol.setText("AAPL,MSFT")
+            with patch("pivluma.desktop.QInputDialog.getText", return_value=("", False)) as prompt:
+                window.connect_market()
+            prompt.assert_not_called()
+            self.assertIn("one symbol", window.status.text())
+            self.assertIn("Disconnected", window.market_status.text())
+        finally:
+            window.close()
+
     def test_csv_import_persists_and_saved_series_loads(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)

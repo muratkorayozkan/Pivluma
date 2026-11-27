@@ -174,6 +174,8 @@ class Dashboard(QMainWindow):
     def connect_market(self):
         try:
             symbol = self.series_key().upper()
+            if ',' in symbol:
+                raise ValueError('Enter one symbol for live data, such as AAPL or EUR/USD.')
             key, accepted = QInputDialog.getText(self, "Twelve Data", "API key",
                                                    QLineEdit.EchoMode.Password)
             if not accepted:
