@@ -6,12 +6,12 @@ import unittest
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 try:
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QMessageBox
 except ModuleNotFoundError as error:
     if error.name != "PySide6":
         raise
@@ -19,6 +19,7 @@ except ModuleNotFoundError as error:
 
 from pivluma.data import PriceStore, sample_prices
 from pivluma.desktop import Dashboard
+from pivluma.update_ui import UpdateController
 
 
 class DashboardTests(unittest.TestCase):
@@ -122,6 +123,25 @@ class DashboardTests(unittest.TestCase):
             window.language_picker.setCurrentIndex(0)
             self.assertIn("Synthetic sample", window.dataset.text())
             self.assertFalse(window.windowIcon().isNull())
+        finally:
+            window.close()
+
+    def test_update_handoff_requires_confirmation_and_remembers_new_version(self):
+        window = Dashboard(Path("unused.sqlite3"))
+        try:
+            settings = Mock()
+            controller = UpdateController(window, window.update_button, Path("Versions"), settings)
+            path = Path("Versions/0.6.0-0123456789abcdef0123456789abcdef/Pivluma.exe")
+            controller.finished("Update ready.", ("0.6.0", path))
+            self.assertIn("Update ready", window.update_label.text())
+            with patch("pivluma.update_ui.QProcess.startDetached", return_value=(True, 123)) as launch:
+                with patch("pivluma.update_ui.QMessageBox.question", return_value=QMessageBox.StandardButton.No):
+                    controller.activate()
+                launch.assert_not_called()
+                with patch("pivluma.update_ui.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes):
+                    controller.activate()
+                launch.assert_called_once_with(str(path), [], str(path.parent))
+            settings.setValue.assert_called_once_with("preferred_release", path.parent.name)
         finally:
             window.close()
 

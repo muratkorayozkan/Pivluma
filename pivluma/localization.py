@@ -1,6 +1,15 @@
 """User-facing desktop translations."""
 
 TURKISH = {
+    "Check for updates": "Güncellemeleri denetle",
+    "Checking and preparing updates…": "Güncellemeler denetleniyor ve hazırlanıyor…",
+    "No newer verified update found.": "Daha yeni doğrulanmış bir güncelleme bulunamadı.",
+    "Could not prepare the update. Try again.": "Güncelleme hazırlanamadı. Yeniden deneyin.",
+    "Update ready.": "Güncelleme hazır.",
+    "Open update": "Güncellemeyi aç",
+    "Pivluma update": "Pivluma güncellemesi",
+    "Version {version} is ready. Open it now?": "{version} sürümü hazır. Şimdi açılsın mı?",
+    "Could not start the new version.": "Yeni sürüm başlatılamadı.",
     "Language": "Dil",
     "Symbol": "Sembol",
     "Load saved": "Kayıtlı seriyi aç",

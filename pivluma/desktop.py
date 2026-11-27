@@ -7,7 +7,7 @@ from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
-from PySide6.QtCore import QPointF, QRectF, QSettings, QStandardPaths, Qt, QTimer
+from PySide6.QtCore import QPointF, QProcess, QRectF, QSettings, QStandardPaths, Qt, QTimer
 from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow,
@@ -20,6 +20,7 @@ from pivluma.data import PriceStore, read_prices, sample_prices
 from pivluma.forecast import TRAINING_WINDOW, analyze
 from pivluma.localization import translate
 from pivluma.market import MarketFeed
+from pivluma.update_ui import UpdateController
 
 
 class PriceChart(QWidget):
@@ -107,7 +108,15 @@ class Dashboard(QMainWindow):
         self.language_picker.addItem("TR · Türkçe", "tr")
         self.language_picker.currentIndexChanged.connect(self.change_language)
         header.addWidget(self.language_picker)
+        self.update_button = self.localized_button("Check for updates")
+        self.update_button.hide()
+        header.addWidget(self.update_button)
         layout.addLayout(header)
+        self.update_message = ""
+        self.update_label = QLabel()
+        self.update_label.setWordWrap(True)
+        self.update_label.hide()
+        layout.addWidget(self.update_label)
         toolbar = QHBoxLayout()
         layout.addLayout(toolbar)
         self.symbol = QLineEdit()
@@ -217,6 +226,7 @@ class Dashboard(QMainWindow):
         self.set_market_status(self.market_message)
         self.update_quote()
         self.update_summary()
+        self.update_label.setText(self.text(self.update_message))
         if self.reply.text():
             self.ask_analyst()
         self.status.clear()
@@ -417,6 +427,16 @@ def main():
     window.language_picker.currentIndexChanged.connect(
         lambda: settings.setValue("language", window.language_picker.currentData())
     )
+    if sys.platform == "win32" and getattr(sys, "frozen", False):
+        updates = directory / "Versions"
+        preferred = UpdateController.preferred_executable(settings, updates)
+        if preferred is not None:
+            started, _ = QProcess.startDetached(str(preferred), [], str(preferred.parent))
+            if started:
+                return 0
+        window.update_button.show()
+        window.update_label.show()
+        UpdateController(window, window.update_button, updates, settings)
     window.show()
     return application.exec()
 
