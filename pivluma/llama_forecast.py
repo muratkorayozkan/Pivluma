@@ -53,7 +53,7 @@ def forecast_request(facts):
                 "Check research_evidence for the number of observations, differences in subsequent returns, "
                 "and correlation. Treat scores as weak evidence and do not infer specific events. "
                 "Compare the current regime with historical_patterns. Its median is a reference for the last "
-                "requested step. Wide ranges or few matches weaken that evidence. "
+                "requested step. Give it little weight when beats_flat_reference is false or outcomes vary widely. "
                 "When price history and research disagree, reduce the size of the move. "
                 "Estimate a return for every requested step in order. Step numbers are time indices, "
                 "never copy them into the result. Each output is a signed percentage from the latest close. "
@@ -76,7 +76,8 @@ def forecast_path(response, last_close, horizon, research_adjustment=0., pattern
     if changes == steps:
         raise ValueError("Model echoed the time indices")
     pattern_weight = 0.
-    if patterns and patterns["matches"] >= 8 and patterns["median_distance"] <= 1:
+    if (patterns and patterns.get("beats_flat_reference")
+            and patterns["matches"] >= 8 and patterns["median_distance"] <= 1):
         positive_share = patterns["positive_outcome_share_percent"]
         if positive_share >= 65 or positive_share <= 35:
             pattern_weight = .2

@@ -15,4 +15,6 @@ class HistoricalPatternTests(unittest.TestCase):
         self.assertTrue(result["matched_on_research_tone"])
         self.assertEqual(result["median_return_percent"], round((1.01 ** 5 - 1) * 100, 3))
         self.assertEqual(result["positive_outcome_share_percent"], 100)
+        self.assertTrue(result["beats_flat_reference"])
+        self.assertLess(result["validation_pattern_mae_percent"], result["validation_flat_mae_percent"])
         self.assertEqual(historical_patterns(prices, scores, 120), {"matches": 0})

@@ -36,3 +36,11 @@ class LocalForecastTests(unittest.TestCase):
         self.assertAlmostEqual(rising[0], 100.4)
         self.assertAlmostEqual(falling[0], 99.6)
         self.assertLess(rising[1] - falling[1], rising[0] - falling[0])
+
+    def test_analogue_adjustment_requires_walk_forward_support(self):
+        body = '{"changes":[0, 0]}'
+        evidence = {"matches": 10, "median_distance": .4, "positive_outcome_share_percent": 80,
+                    "median_return_percent": 10, "beats_flat_reference": False}
+        self.assertEqual(forecast_path(body, 100, 2, patterns=evidence), (100, 100))
+        evidence["beats_flat_reference"] = True
+        self.assertEqual(forecast_path(body, 100, 2, patterns=evidence), (101, 102))

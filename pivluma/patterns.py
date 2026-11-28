@@ -20,7 +20,7 @@ def _features(prices, scores, index):
     )
 
 
-def historical_patterns(prices, scores, horizon):
+def _find_patterns(prices, scores, horizon):
     latest = len(prices) - 1
     if latest < 20 + horizon:
         return {"matches": 0}
@@ -53,3 +53,25 @@ def historical_patterns(prices, scores, horizon):
         "minimum_return_percent": round(min(returns), 3), "maximum_return_percent": round(max(returns), 3),
         "median_distance": round(median(distance for distance, _ in chosen), 2),
     }
+
+def historical_patterns(prices, scores, horizon):
+    current = _find_patterns(prices, scores, horizon)
+    if not current["matches"]:
+        return current
+
+    errors, flat_errors = [], []
+    last_origin = len(prices) - horizon
+    spacing = max(3, horizon // 2)
+    for origin in range(max(21 + horizon, last_origin - 9 * spacing), last_origin + 1, spacing):
+        past = _find_patterns(prices[:origin], scores, horizon)
+        if past["matches"]:
+            actual = (prices[origin + horizon - 1].close / prices[origin - 1].close - 1) * 100
+            errors.append(abs(actual - past["median_return_percent"]))
+            flat_errors.append(abs(actual))
+
+    current["validation_matches"] = len(errors)
+    current["beats_flat_reference"] = len(errors) >= 5 and mean(errors) < mean(flat_errors) * .98
+    if errors:
+        current["validation_pattern_mae_percent"] = round(mean(errors), 3)
+        current["validation_flat_mae_percent"] = round(mean(flat_errors), 3)
+    return current
