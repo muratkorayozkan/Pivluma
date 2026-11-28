@@ -1,6 +1,13 @@
 """Simplified Chinese desktop translations."""
 
 CHINESE = {
+    "Watchlist": "自选列表",
+    "Chart focus": "专注图表",
+    "Remove {symbol}": "移除 {symbol}",
+    "Add {symbol} to watchlist": "将 {symbol} 加入自选",
+    "Select a symbol first": "请先选择品种",
+    "No saved symbols": "暂无自选品种",
+    "Close change": "收盘变动",
     "ECB · Loading daily history": "ECB · 正在加载历史日线",
     "ECB · Daily reference rates": "ECB · 每日参考汇率",
     "ECB · Daily reference rates unavailable.": "ECB · 无法获取每日参考汇率。",

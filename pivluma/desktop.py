@@ -1,6 +1,7 @@
 """Offline market-analysis dashboard."""
 
 import os
+import re
 import sqlite3
 import sys
 from contextlib import closing
@@ -10,7 +11,7 @@ from pathlib import Path
 from PySide6.QtCore import QEasingCurve, QProcess, QPropertyAnimation, QSettings, QStandardPaths, Qt, QTimer
 from PySide6.QtGui import QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QFileDialog, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow,
+    QApplication, QCheckBox, QComboBox, QFileDialog, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu,
     QProgressBar, QPushButton, QScrollArea, QSpinBox, QStyle, QSplitter, QStackedWidget, QTabWidget, QVBoxLayout, QWidget,
 )
 
@@ -35,6 +36,7 @@ SHORTCUTS = (
     ("F11", "Toggle maximized window", "toggle_fullscreen"),
     ("Esc", "Restore window size", "exit_fullscreen"),
     ("Ctrl+K", "Open symbol list", "open_symbol_list"),
+    ("Ctrl+Shift+F", "Chart focus", "toggle_chart_focus"),
     ("Ctrl+Shift+S", "Export forecast XLSX", "export_forecast"),
     ("Ctrl+,", "Settings", "open_settings"),
     ("F1", "Keyboard shortcuts", "open_shortcuts"),
@@ -50,6 +52,7 @@ class Dashboard(QMainWindow):
         self.language = "en"
         self.theme = "dark-blue"
         self.settings = None
+        self.watchlist = []
         self.analyst_model = ""
         self.cloud_url = ""
         self.cloud_code = ""
@@ -73,12 +76,17 @@ class Dashboard(QMainWindow):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(22, 22, 22, 22)
         layout.setSpacing(10)
-        title = QLabel("Pivluma")
-        title.setObjectName("title")
+        self.compact_title = QLabel("Pivluma")
+        self.compact_title.setObjectName("title")
+        layout.addWidget(self.compact_title)
         header = QHBoxLayout()
-        layout.addWidget(title)
+        self.header_title = QLabel("Pivluma")
+        self.header_title.setObjectName("title")
+        header.addWidget(self.header_title)
         header.addStretch()
-        header.addWidget(self.localized_label("Language"))
+        self.language_label = self.localized_label("Language")
+        header.addWidget(self.language_label)
+        self.adjust_header()
         self.language_picker = QComboBox()
         self.language_picker.addItem("EN · English", "en")
         self.language_picker.addItem("TR · Türkçe", "tr")
@@ -115,6 +123,8 @@ class Dashboard(QMainWindow):
         market_section.addLayout(toolbar)
         self.symbol_picker = QComboBox()
         self.symbol_picker.setEditable(True)
+        self.symbol_picker.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.symbol_picker.setMinimumContentsLength(12)
         self.symbol_picker.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.symbol = self.symbol_picker.lineEdit()
         instruments = {**PUBLIC_SYMBOLS, **FX_SYMBOLS, **OTHER_SYMBOLS}
@@ -131,6 +141,11 @@ class Dashboard(QMainWindow):
         self.localize(self.symbol.setPlaceholderText, "Symbol")
         self.localize(self.symbol.setAccessibleName, "Symbol")
         toolbar.addWidget(self.symbol_picker, 1)
+        watch_button = self.localized_button("Watchlist")
+        self.watch_menu = QMenu(watch_button)
+        self.watch_menu.aboutToShow.connect(self.populate_watchlist)
+        watch_button.setMenu(self.watch_menu)
+        toolbar.addWidget(watch_button)
         for name, action in (("Load saved", self.load_saved), ("Import CSV", self.import_csv),
                              ("Sample data", self.show_sample)):
             button = self.localized_button(name)
@@ -216,6 +231,10 @@ class Dashboard(QMainWindow):
         self.export_button = self.localized_button("Export forecast XLSX")
         self.export_button.clicked.connect(self.export_forecast)
         forecast_controls.addWidget(self.export_button)
+        self.chart_focus_button = self.localized_button("Chart focus")
+        self.chart_focus_button.setCheckable(True)
+        self.chart_focus_button.toggled.connect(lambda _: self.arrange_workspace())
+        forecast_controls.addWidget(self.chart_focus_button)
         analyst_title = self.localized_label("Local analyst")
         analyst_title.setProperty("sectionTitle", True)
         analyst_layout.addWidget(analyst_title)
@@ -330,6 +349,37 @@ class Dashboard(QMainWindow):
         self.symbol.setFocus()
         self.symbol_picker.showPopup()
 
+    def toggle_chart_focus(self):
+        self.chart_focus_button.toggle()
+
+    def populate_watchlist(self):
+        self.watch_menu.clear()
+        symbol = self.symbol.text().strip().upper()
+        saved = symbol in self.watchlist
+        label = "Remove {symbol}" if saved else "Add {symbol} to watchlist"
+        action = self.watch_menu.addAction(
+            self.text(label, symbol=symbol) if symbol else self.text("Select a symbol first")
+        )
+        action.setEnabled(bool(re.fullmatch(r"[A-Z0-9][A-Z0-9./:_-]{0,31}", symbol)))
+        action.triggered.connect(lambda: self.toggle_watch_symbol(symbol))
+        self.watch_menu.addSeparator()
+        if not self.watchlist:
+            self.watch_menu.addAction(self.text("No saved symbols")).setEnabled(False)
+        for entry in self.watchlist:
+            self.watch_menu.addAction(entry, lambda entry=entry: self.open_watch_symbol(entry))
+
+    def toggle_watch_symbol(self, symbol):
+        if symbol in self.watchlist:
+            self.watchlist.remove(symbol)
+        else:
+            self.watchlist.append(symbol)
+        if self.settings is not None:
+            self.settings.setValue("watchlist", self.watchlist)
+
+    def open_watch_symbol(self, symbol):
+        self.symbol.setText(symbol)
+        self.connect_market()
+
     def open_settings(self):
         settings_dialog(self)
 
@@ -350,7 +400,14 @@ class Dashboard(QMainWindow):
         super().resizeEvent(event)
         if hasattr(self, "workspace_stack"):
             self.arrange_workspace()
+            self.adjust_header()
             self.update_label.setVisible(bool(self.update_message) and self.width() >= 1120)
+
+    def adjust_header(self):
+        inline = self.width() >= 1120
+        self.header_title.setVisible(inline)
+        self.compact_title.setVisible(not inline)
+        self.language_label.setVisible(inline)
 
     def render_update_status(self):
         message = self.update_message
@@ -383,6 +440,13 @@ class Dashboard(QMainWindow):
         elif not wide and self.workspace_tabs.count() != 2:
             self.workspace_tabs.addTab(self.chart_panel, self.text("Chart"))
             self.workspace_tabs.addTab(self.analyst_panel, self.text("Local analyst"))
+        focused = self.chart_focus_button.isChecked()
+        if wide:
+            self.analyst_panel.setVisible(not focused)
+        else:
+            self.workspace_tabs.setTabVisible(1, not focused)
+            if focused:
+                self.workspace_tabs.setCurrentIndex(0)
         self.workspace_stack.setCurrentWidget(self.workspace_splitter if wide else self.workspace_tabs)
 
     def reset_chart(self):
@@ -825,10 +889,13 @@ class Dashboard(QMainWindow):
             count=len(self.prices),
         ))
         result = self.chart.result
+        last_close = self.prices[-1].close
+        change = (last_close / self.prices[-2].close - 1) * 100
         fields = (
             ("Selected model", self.text(result.model)),
-            ("Last close", f"{self.prices[-1].close:.2f}"),
-            ("Final forecast", f"{result.forecast[-1]:.2f}"),
+            ("Last close", f"{last_close:.8g}"),
+            ("Close change", f"{change:+.2f}%"),
+            ("Final forecast", f"{result.forecast[-1]:.8g}"),
             ("Model MAE", f"{result.mae:.2f}"),
             ("Last-price MAE", f"{result.baseline_mae:.2f}"),
             ("Test origins", str(result.origins)),
@@ -847,6 +914,7 @@ def main():
     application.setWindowIcon(window.windowIcon())
     settings = QSettings("Pivluma", "Pivluma")
     window.settings = settings
+    window.watchlist = settings.value("watchlist", [], type=list)
     window.change_theme(settings.value("theme", "dark-blue", type=str))
     window.set_cloud_access(settings.value("cloud_url", "", type=str), "")
     window.set_analyst_model(settings.value("analyst_model", "", type=str))

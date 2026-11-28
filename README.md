@@ -6,7 +6,7 @@ Pivluma is a Windows desktop application in development for financial forecastin
 
 ## Current release
 
-[Pivluma 0.15.1](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.15.1) is the current release. Download the [portable Windows x64 ZIP](https://github.com/muratkorayozkan/Pivluma/releases/latest), extract it, and run Pivluma.exe. The themed Windows Setup EXE is available on the same release page, alongside the standalone MSI. Setup starts with the Windows light or dark preference and offers a theme switch. It installs to `C:\Program Files\Pivluma` with a Start menu entry. Its desktop shortcut option is selected by default and can be cleared during setup. Windows requests administrator approval for the MSI.
+[Pivluma 0.16.0](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.16.0) is the current release. Download the [portable Windows x64 ZIP](https://github.com/muratkorayozkan/Pivluma/releases/latest), extract it, and run Pivluma.exe. The themed Windows Setup EXE is available on the same release page, alongside the standalone MSI. Setup starts with the Windows light or dark preference and offers a theme switch. It installs to `C:\Program Files\Pivluma` with a Start menu entry. Its desktop shortcut option is selected by default and can be cleared during setup. Windows requests administrator approval for the MSI.
 
 The forecasting engine compares a last-price baseline, linear trend, damped trend, and exponentially smoothed level. At each origin it uses only completed prior forecasts to select a model, using recent errors at several lead times. The dashboard reports the selected model and compares the full selection strategy against the last-price baseline on the same walk-forward origins. Forecast intervals use empirical errors for each step.
 
@@ -31,6 +31,10 @@ The chart and analyst appear side by side in wide windows and in separate tabs i
 
 The upper-right controls open revision history, the about page, and settings. **Settings → Theme** includes a Windows system option and light and dark palettes. The theme is remembered on this PC. Revision history loads recent published GitHub release notes.
 
+Open **Watchlist** beside the symbol picker to save the current symbol or reopen a saved one. The list is stored on this PC. Selecting a saved symbol updates the same chart, forecast, and analyst context used by the symbol picker. Use **Chart focus** or **Ctrl+Shift+F** to make more room for the chart. The price summary shows the change from the previous observation, which can be an earlier working day for FX.
+
+[Interface research and design decisions](docs/interface-research.md)
+
 The dashboard scrolls vertically when the controls, chart, and analyst response exceed the window height.
 
 ## Automatic updates on Windows
@@ -53,7 +57,7 @@ python -m venv .venv
 .\scripts\build-windows.ps1 -Python .\.venv\Scripts\python.exe
 ```
 
-The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.15.1-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
+The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.16.0-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
 
 
 ## Connect live market data
@@ -69,7 +73,7 @@ The chart uses daily REST history. If daily history is unavailable, Pivluma stil
 Provider references: [Kraken daily history](https://docs.kraken.com/api/docs/rest-api/get-ohlc-data), [Kraken ticker stream](https://docs.kraken.com/api/docs/websocket-v2/ticker), [REST API](https://twelvedata.com/docs), [WebSocket API](https://twelvedata.com/docs/websocket/websocket-getting-started), and [plans](https://twelvedata.com/pricing).
 
 
-To build the themed Setup EXE and standalone MSI after building the portable package, run `./scripts/build-setup.ps1 -WixBin PATH_TO_WIX_BINARIES` with the WiX 3.14.1 binaries. This creates `dist/Pivluma-0.15.1-Windows-Setup.exe` and `dist/Pivluma-0.15.1-Windows-Setup.msi`.
+To build the themed Setup EXE and standalone MSI after building the portable package, run `./scripts/build-setup.ps1 -WixBin PATH_TO_WIX_BINARIES` with the WiX 3.14.1 binaries. This creates `dist/Pivluma-0.16.0-Windows-Setup.exe` and `dist/Pivluma-0.16.0-Windows-Setup.msi`.
 
 ## Cloud analyst
 

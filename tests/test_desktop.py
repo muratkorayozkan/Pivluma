@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 try:
-    from PySide6.QtCore import QPoint, QPointF, Qt
+    from PySide6.QtCore import QPoint, QPointF, QSettings, Qt
     from PySide6.QtGui import QWheelEvent
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QMessageBox
@@ -30,6 +30,47 @@ class DashboardTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.application = QApplication.instance() or QApplication([])
+
+    def test_watchlist_navigation_and_persistence(self):
+        with tempfile.TemporaryDirectory() as folder:
+            settings = QSettings(str(Path(folder) / "settings.ini"), QSettings.Format.IniFormat)
+            window = Dashboard(Path("unused.sqlite3"))
+            try:
+                window.settings = settings
+                window.symbol.setText("USD/TRY")
+                window.watch_menu.aboutToShow.emit()
+                window.watch_menu.actions()[0].trigger()
+                self.assertEqual(settings.value("watchlist"), ["USD/TRY"])
+                window.symbol.clear()
+                window.watch_menu.aboutToShow.emit()
+                with patch.dict(os.environ, {"TWELVE_DATA_API_KEY": ""}), patch.object(window.market, "start") as start:
+                    window.watch_menu.actions()[-1].trigger()
+                self.assertEqual(window.live_symbol, "USD/TRY")
+                start.assert_called_once_with("USD/TRY", None)
+                window.watch_menu.aboutToShow.emit()
+                window.watch_menu.actions()[0].trigger()
+                self.assertEqual(settings.value("watchlist"), [])
+            finally:
+                window.close()
+                delete(window)
+
+    def test_chart_focus_survives_compact_reflow(self):
+        window = Dashboard(Path("unused.sqlite3"))
+        try:
+            window.show()
+            self.application.processEvents()
+            window.chart_focus_button.click()
+            self.assertTrue(window.analyst_panel.isHidden())
+            self.assertTrue(window.chart_panel.isVisible())
+            window.resize(760, 680)
+            self.application.processEvents()
+            self.assertFalse(window.workspace_tabs.isTabVisible(1))
+            window.chart_focus_button.click()
+            self.assertTrue(window.workspace_tabs.isTabVisible(1))
+            self.assertTrue(window.chart_panel.isVisible())
+        finally:
+            window.close()
+            delete(window)
 
     def test_sample_draws_and_horizon_refreshes(self):
         window = Dashboard(Path("unused.sqlite3"))

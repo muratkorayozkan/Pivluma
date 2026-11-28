@@ -59,6 +59,10 @@ def stylesheet(colors):
         QPushButton, QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit {{
             background: {surface}; border: 1px solid {border}; border-radius: 6px; padding: 6px 10px;
         }}
+        QMenu {{ background: {surface}; border: 1px solid {border}; padding: 4px; }}
+        QMenu::item {{ padding: 6px 20px; }}
+        QMenu::item:selected {{ background: {background}; color: {accent}; }}
+        QPushButton:checked {{ border-color: {accent}; color: {accent}; }}
         QProgressBar {{ background: {surface}; border: 0; border-radius: 2px; }}
         QProgressBar::chunk {{ background: {accent}; border-radius: 2px; }}
         QPushButton[headerAction="true"] {{ padding: 5px 6px; }}

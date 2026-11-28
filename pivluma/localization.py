@@ -3,6 +3,13 @@
 from pivluma.chinese import CHINESE
 
 TURKISH = {
+    "Watchlist": "İzleme listesi",
+    "Chart focus": "Grafiğe odaklan",
+    "Remove {symbol}": "{symbol} listesinden kaldır",
+    "Add {symbol} to watchlist": "{symbol} izleme listesine ekle",
+    "Select a symbol first": "Önce bir sembol seçin",
+    "No saved symbols": "Kayıtlı sembol yok",
+    "Close change": "Kapanış değişimi",
     "ECB · Loading daily history": "ECB · Günlük geçmiş yükleniyor",
     "ECB · Daily reference rates": "ECB · Günlük referans kurları",
     "ECB · Daily reference rates unavailable.": "ECB · Günlük referans kurları alınamadı.",
