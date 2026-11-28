@@ -1,6 +1,14 @@
 """Simplified Chinese desktop translations."""
 
 CHINESE = {
+    "Cryptocurrency": "加密货币",
+    "Foreign exchange": "外汇",
+    "Stocks": "股票",
+    "ETFs": "交易所交易基金",
+    "Dashed purple line · {symbol} · fixed reference {date}.": "紫色虚线 · {symbol} · 固定基准日 {date}。",
+    "Showing saved closes; live equity data is unavailable.": "正在显示已保存的收盘价。实时股票数据不可用。",
+    "Equity data needs a configured feed or imported CSV history.": "股票需要已配置的数据源或导入的 CSV 历史数据。",
+    "Saved equity closes": "已保存的股票收盘价",
     "Compare symbol": "比较品种",
     "Clear comparison": "清除比较",
     "Loading comparison for {symbol}…": "正在加载 {symbol} 的对比数据…",

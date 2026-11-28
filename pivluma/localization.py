@@ -3,6 +3,14 @@
 from pivluma.chinese import CHINESE
 
 TURKISH = {
+    "Cryptocurrency": "Kripto paralar",
+    "Foreign exchange": "Döviz",
+    "Stocks": "Hisseler",
+    "ETFs": "Borsa yatırım fonları",
+    "Dashed purple line · {symbol} · fixed reference {date}.": "Kesik mor çizgi · {symbol} · sabit referans {date}.",
+    "Showing saved closes; live equity data is unavailable.": "Kayıtlı kapanışlar gösteriliyor. Canlı hisse verisi alınamadı.",
+    "Equity data needs a configured feed or imported CSV history.": "Hisse verisi için yapılandırılmış bir sağlayıcı veya içe aktarılmış CSV geçmişi gerekiyor.",
+    "Saved equity closes": "Kayıtlı hisse kapanışları",
     "Compare symbol": "Sembol karşılaştır",
     "Clear comparison": "Karşılaştırmayı kaldır",
     "Loading comparison for {symbol}…": "{symbol} karşılaştırması yükleniyor…",

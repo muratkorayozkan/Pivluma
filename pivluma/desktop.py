@@ -8,10 +8,10 @@ from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
-from PySide6.QtCore import QEasingCurve, QProcess, QPropertyAnimation, QSettings, QStandardPaths, Qt, QTimer, Signal
+from PySide6.QtCore import QProcess, QSettings, QStandardPaths, Qt, QTimer, Signal
 from PySide6.QtGui import QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QFileDialog, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu,
+    QApplication, QCheckBox, QComboBox, QFileDialog, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu,
     QProgressBar, QPushButton, QScrollArea, QSpinBox, QStyle, QSplitter, QStackedWidget, QTabWidget, QVBoxLayout, QWidget,
 )
 
@@ -141,14 +141,24 @@ class Dashboard(QMainWindow):
         self.symbol_picker.setMinimumContentsLength(12)
         self.symbol_picker.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.symbol = self.symbol_picker.lineEdit()
-        instruments = {**PUBLIC_SYMBOLS, **FX_SYMBOLS, **OTHER_SYMBOLS}
-        for code, name in instruments.items():
+        groups = (
+            ("Cryptocurrency", PUBLIC_SYMBOLS),
+            ("Foreign exchange", FX_SYMBOLS),
+            ("Stocks", {code: title for code, title in OTHER_SYMBOLS.items() if code not in ("SPY", "QQQ", "DIA")}),
+            ("ETFs", {code: OTHER_SYMBOLS[code] for code in ("SPY", "QQQ", "DIA")}),
+        )
+        for category, instruments in groups:
             index = self.symbol_picker.count()
-            self.symbol_picker.addItem(f"{self.text(name)} ({code})", code)
-            self.localize(
-                lambda text, index=index, code=code: self.symbol_picker.setItemText(index, f"{text} ({code})"),
-                name,
-            )
+            self.symbol_picker.addItem(self.text(category))
+            self.symbol_picker.model().item(index).setEnabled(False)
+            self.localize(lambda text, index=index: self.symbol_picker.setItemText(index, text), category)
+            for code, name in instruments.items():
+                index = self.symbol_picker.count()
+                self.symbol_picker.addItem(f"{self.text(name)} ({code})", code)
+                self.localize(
+                    lambda text, index=index, code=code: self.symbol_picker.setItemText(index, f"{text} ({code})"),
+                    name,
+                )
         self.symbol_picker.setCurrentIndex(-1)
         self.symbol_picker.activated.connect(self.select_live_symbol)
         self.symbol.returnPressed.connect(self.connect_market)
@@ -315,13 +325,6 @@ class Dashboard(QMainWindow):
         self.reply.setTextFormat(Qt.TextFormat.PlainText)
         self.reply.setWordWrap(True)
         self.reply.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        if self.motion_enabled:
-            self.reply_effect = QGraphicsOpacityEffect(self.reply)
-            self.reply_effect.setOpacity(1.0)
-            self.reply.setGraphicsEffect(self.reply_effect)
-            self.reply_transition = QPropertyAnimation(self.reply_effect, b"opacity", self)
-            self.reply_transition.setDuration(180)
-            self.reply_transition.setEasingCurve(QEasingCurve.Type.OutCubic)
         analyst_layout.addWidget(self.reply)
         analyst_layout.addStretch()
         self.chart.viewport_changed.connect(self.refresh_contextual_reply)
@@ -375,7 +378,7 @@ class Dashboard(QMainWindow):
         self.live_symbol = ""
         self.market = MarketFeed(self)
         self.market.history.connect(self.receive_history)
-        self.market.history_warning.connect(self.set_history_warning)
+        self.market.history_warning.connect(self.receive_market_warning)
         self.market.status.connect(self.set_market_status)
         self.market.quote.connect(self.receive_quote)
         self.market.stream_lost.connect(self.mark_stream_lost)
@@ -445,13 +448,6 @@ class Dashboard(QMainWindow):
 
     def start_default_market(self):
         self.select_live_symbol(self.symbol_picker.findData(DEFAULT_SYMBOL))
-
-    def animate_reply(self):
-        if self.motion_enabled and self.reply.isVisible():
-            self.reply_transition.stop()
-            self.reply_transition.setStartValue(.72)
-            self.reply_transition.setEndValue(1.)
-            self.reply_transition.start()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -577,6 +573,11 @@ class Dashboard(QMainWindow):
         busy = message.endswith(("Loading daily history", "Connecting quote stream", "Awaiting subscription"))
         self.market_progress.setVisible(self.motion_enabled and busy)
 
+    def receive_market_warning(self, message):
+        self.set_history_warning(message)
+        if not self.prices and self.load_equity_history(self.live_symbol):
+            self.set_market_status("Showing saved closes; live equity data is unavailable.")
+
     def set_history_warning(self, message):
         self.history_message = message
         self.history_warning.setText(self.text(message))
@@ -684,12 +685,28 @@ class Dashboard(QMainWindow):
                 key = os.environ.get("TWELVE_DATA_API_KEY", "").strip()
                 if not key or not key.isascii() or not key.isprintable() or " " in key:
                     if symbol not in FX_SYMBOLS:
-                        self.set_market_status("Daily data unavailable. Choose a crypto or FX symbol, or import a CSV.")
+                        if self.load_equity_history(symbol):
+                            self.set_market_status("Showing saved closes; live equity data is unavailable.")
+                        else:
+                            self.set_market_status("Equity data needs a configured feed or imported CSV history.")
                         return
                     key = None
             self.market.start(symbol, key)
         except ValueError as error:
             self.status.setText(str(error))
+
+    def load_equity_history(self, symbol):
+        if symbol not in OTHER_SYMBOLS or not self.database.is_file():
+            return False
+        try:
+            with closing(sqlite3.connect(self.database)) as connection:
+                prices = PriceStore(connection).load(symbol)
+            if len(prices) <= TRAINING_WINDOW + 9:
+                return False
+            self.set_series("Saved equity closes", prices, symbol)
+        except (sqlite3.Error, ValueError):
+            return False
+        return True
 
     def choose_comparison(self):
         try:
@@ -738,14 +755,19 @@ class Dashboard(QMainWindow):
         self.chart.comparison_symbol = symbol
         self.chart.comparison_closes = {price.day: price.close for price in prices}
         self.chart.view_changed()
+        if self.analyst_model == LOCAL_MODEL and self.prices:
+            self.llama_timer.start()
 
     def clear_comparison(self):
+        had_comparison = bool(self.chart.comparison_symbol)
         self.comparison_market.stop()
         self.pending_comparison = ""
         self.comparison_failed = False
         self.chart.comparison_symbol = ""
         self.chart.comparison_closes = {}
         self.chart.view_changed()
+        if had_comparison and self.analyst_model == LOCAL_MODEL and self.prices:
+            self.llama_timer.start()
 
     def render_comparison(self):
         symbol = self.chart.comparison_symbol
@@ -757,7 +779,8 @@ class Dashboard(QMainWindow):
         elif self.comparison_failed:
             text = self.text("Comparison price history unavailable.")
         elif symbol and self.chart.comparison_points():
-            text = self.text("Dashed purple line · {symbol}, rebased at the first common date.", symbol=symbol)
+            text = self.text("Dashed purple line · {symbol} · fixed reference {date}.",
+                             symbol=symbol, date=self.chart.comparison_anchor()[0])
         elif symbol:
             text = self.text("{symbol} has fewer than two common dates in this view.", symbol=symbol)
         else:
@@ -922,7 +945,6 @@ class Dashboard(QMainWindow):
     def ask_analyst(self):
         self.cancel_model_request()
         self.render_analyst(True)
-        self.animate_reply()
 
     def render_analyst(self, use_model):
         if not self.prices:
@@ -1007,7 +1029,6 @@ class Dashboard(QMainWindow):
                 if response else self.text("Local model unavailable. Check the llama.cpp download in Settings.")
             )
         self.reply.setText(self.model_calculation + "\n\n" + explanation)
-        self.animate_reply()
 
     def closeEvent(self, event):
         self.comparison_market.stop()
@@ -1068,7 +1089,10 @@ class Dashboard(QMainWindow):
         if self.local_model.reply is not None and hasattr(self, "model_calculation") and not self.llama_pending:
             self.reply.setText(self.model_calculation)
         self.llama_pending = True
-        facts = forecast_input(self.prices, self.horizon.value(), self.news_scores, self.news_source)
+        facts = forecast_input(
+            self.prices, self.horizon.value(), self.news_scores, self.news_source,
+            self.chart.comparison_symbol, self.chart.comparison_closes,
+        )
         self.llama_source = facts["research_source"]
         self.llama_research = facts["research_evidence"]["bounded_adjustment_percent"]
         self.llama_patterns = facts["historical_patterns"]

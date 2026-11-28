@@ -126,6 +126,47 @@ class DashboardTests(unittest.TestCase):
             window.close()
             delete(window)
 
+    def test_comparison_reference_is_stable_when_zooming(self):
+        window = Dashboard(Path("unused.sqlite"))
+        try:
+            prices = window.prices
+            window.receive_comparison("TEST", [Price(p.day, 200. + index) for index, p in enumerate(prices)])
+            before = {day: value for (index, value) in window.chart.comparison_points()
+                      for day in [window.chart.visible_days()[index]]}
+            anchor = window.chart.comparison_anchor()
+            for limit in (30, 60, 120):
+                window.chart.set_history_limit(limit)
+                self.assertEqual(window.chart.comparison_anchor(), anchor)
+                days = window.chart.visible_days()
+                for index, value in window.chart.comparison_points():
+                    self.assertAlmostEqual(value, before[days[index]])
+        finally:
+            window.close()
+            delete(window)
+
+    def test_equities_load_saved_closes_without_credentials(self):
+        with tempfile.TemporaryDirectory() as folder:
+            database = Path(folder) / "prices.sqlite"
+            with closing(sqlite3.connect(database)) as connection:
+                store = PriceStore(connection)
+                for symbol in ("NFLX", "META"):
+                    store.replace(symbol, sample_prices())
+            window = Dashboard(database)
+            try:
+                with patch.dict(os.environ, {"TWELVE_DATA_API_KEY": ""}):
+                    for symbol in ("NFLX", "META"):
+                        window.symbol.setText(symbol)
+                        window.connect_market()
+                        self.assertEqual(window.series_symbol, symbol)
+                        self.assertEqual(len(window.prices), 120)
+                        self.assertIn("saved closes", window.market_status.text().lower())
+                category = window.symbol_picker.findText("Stocks")
+                self.assertGreaterEqual(category, 0)
+                self.assertFalse(window.symbol_picker.model().item(category).isEnabled())
+            finally:
+                window.close()
+                delete(window)
+
     def test_sample_draws_and_horizon_refreshes(self):
         window = Dashboard(Path("unused.sqlite3"))
         try:

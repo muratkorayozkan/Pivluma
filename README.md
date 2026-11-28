@@ -2,17 +2,17 @@
 
 Pivluma is a Windows desktop application in development for financial forecasting and market analysis.
 
-![Pivluma 0.19.0 showing the llama.cpp projection and a research analysis alongside sample prices](docs/images/pivluma-dashboard.png)
+![Pivluma 0.19.1 showing the llama.cpp projection and a research analysis alongside sample prices](docs/images/pivluma-dashboard.png)
 
-## Download Pivluma 0.19.0
+## Download Pivluma 0.19.1
 
 | Windows x64 package | How to use it |
 | --- | --- |
-| [Setup EXE](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.19.0/Pivluma-0.19.0-Windows-Setup.exe) | Installs to `C:\Program Files\Pivluma` and adds a Start menu entry. The desktop shortcut is selected by default. The local model download is optional. Windows requests administrator approval for installation. |
-| [Portable ZIP](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.19.0/Pivluma-0.19.0-Windows.zip) | Extract the entire archive and run `Pivluma.exe`. Keep the neighboring `_internal` folder. |
-| [Standalone MSI](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.19.0/Pivluma-0.19.0-Windows-Setup.msi) | Install with Windows Installer. To add the local model, use Pivluma Settings after setup. |
+| [Setup EXE](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.19.1/Pivluma-0.19.1-Windows-Setup.exe) | Installs to `C:\Program Files\Pivluma` and adds a Start menu entry. The desktop shortcut is selected by default. The local model download is optional. Windows requests administrator approval for installation. |
+| [Portable ZIP](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.19.1/Pivluma-0.19.1-Windows.zip) | Extract the entire archive and run `Pivluma.exe`. Keep the neighboring `_internal` folder. |
+| [Standalone MSI](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.19.1/Pivluma-0.19.1-Windows-Setup.msi) | Install with Windows Installer. To add the local model, use Pivluma Settings after setup. |
 
-The app opens on BTC/USD. Use the symbol picker to switch instruments or choose **Sample data** to explore offline. The dashboard and built-in analyst support English, Turkish, and Simplified Chinese. [Release notes](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.19.0)
+The app opens on BTC/USD. Use the symbol picker to switch instruments or choose **Sample data** to explore offline. The dashboard and built-in analyst support English, Turkish, and Simplified Chinese. [Release notes](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.19.1)
 
 ## How to read the chart
 
@@ -44,7 +44,7 @@ The upper-right controls open revision history, the about page, and settings. **
 
 Open **Watchlist** beside the symbol picker to save the current symbol or reopen a saved one. The list is stored on this PC. Selecting a saved symbol updates the same chart, forecast, and analyst context used by the symbol picker. Use **Chart focus** or **Ctrl+Shift+F** to make more room for the chart. The price summary shows the change from the previous observation, which can be an earlier working day for FX.
 
-Use **Compare symbol** to overlay a saved symbol or a public Kraken/ECB symbol. The purple dashed line is rebased to the primary closing price at the first visible date shared by both series. The comparison does not change the inputs to forecasting. Launching Pivluma again brings the running window forward.
+Use **Compare symbol** to overlay a saved symbol or a public Kraken/ECB symbol. The purple dashed line is rebased to the primary closing price at the first date shared by both loaded series. The same reference is used when zooming and scrolling. When at least six aligned observations include the latest close, the comparison's relative performance is passed to llama.cpp. Launching Pivluma again brings the running window forward.
 
 [Interface research and design decisions](docs/interface-research.md)
 
@@ -70,17 +70,17 @@ python -m venv .venv
 .\scripts\build-windows.ps1 -Python .\.venv\Scripts\python.exe
 ```
 
-The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.19.0-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
+The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.19.1-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
 
-To build the themed Setup EXE and standalone MSI after building the portable package, run `./scripts/build-setup.ps1 -WixBin PATH_TO_WIX_BINARIES` with the WiX 3.14.1 binaries. This creates `dist/Pivluma-0.19.0-Windows-Setup.exe` and `dist/Pivluma-0.19.0-Windows-Setup.msi`.
+To build the themed Setup EXE and standalone MSI after building the portable package, run `./scripts/build-setup.ps1 -WixBin PATH_TO_WIX_BINARIES` with the WiX 3.14.1 binaries. This creates `dist/Pivluma-0.19.1-Windows-Setup.exe` and `dist/Pivluma-0.19.1-Windows-Setup.msi`.
 
 ## Connect live market data
 
 Choose an instrument from the **Symbol** drop-down to switch the live chart automatically, or type a single code and press Enter. The live feed changes when you choose a symbol. Choose the same symbol again to retry a failed connection. Forecasting and export become available once sufficient history for the selected symbol arrives.
 
-The symbol picker includes public Kraken crypto pairs against USD or EUR and six FX pairs. With a standard installation, Kraken supplies crypto history and quotes and the [European Central Bank](https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html) supplies daily FX reference rates. ECB rates are published on working days and are labeled as reference rates. When both currencies differ from EUR, Pivluma computes the cross rate from their EUR rates.
+The symbol picker groups instruments into cryptocurrency, foreign exchange, stocks, and ETFs. It includes public Kraken crypto pairs against USD or EUR and six FX pairs. With a standard installation, Kraken supplies crypto history and quotes and the [European Central Bank](https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html) supplies daily FX reference rates. ECB rates are published on working days and are labeled as reference rates. When both currencies differ from EUR, Pivluma computes the cross rate from their EUR rates.
 
-For installations managed by a data provider or administrator, an optional `TWELVE_DATA_API_KEY` in the process environment enables supported equity, ETF and FX data under the provider account's display rights. The public installer requires no key. You can also import equity and ETF history from CSV.
+For installations managed by a data provider or administrator, an optional `TWELVE_DATA_API_KEY` in the process environment enables supported equity, ETF and FX data under the provider account's display rights. The public installer requires no key. You can also import equity and ETF history from CSV. If the stock feed is unavailable, reselecting a listed symbol such as NFLX or META opens its saved closes when sufficient history exists.
 
 The chart uses daily REST history. If daily history is unavailable, Pivluma still tries the quote subscription and displays the history error separately from the stream state. The WebSocket quote is displayed separately in the Windows local time zone, with its UTC offset and marked as the last received quote after two minutes. Disconnecting keeps the latest quote visible and labels it as the last received quote. Switching to a sample or CSV series closes the live connection and clears the quote. The WebSocket connection and subscription acknowledgement have a combined 15-second deadline. If the provider rejects the subscription or the deadline expires, Twelve Data falls back to a REST quote when available. The app polls once per minute and labels the result as a one-minute bar. For other providers, reselect the symbol to retry. Once the subscription is accepted, the app can wait for a quote while the market is quiet. Sample data and CSV analysis work offline.
 
@@ -96,7 +96,7 @@ For a supported live symbol the app requests daily news tone from [GDELT DOC 2.0
 
 The forecast matches each historical price observation to the previous calendar day's news score. After at least 20 matched returns it can compare a bounded, news-adjusted candidate with the existing price models in walk-forward evaluation. The data panel shows the source, number of matched observations, and whether the current prediction uses the news model. Missing news leaves price-based forecasting available. Ask the analyst about news for the current result.
 
-When llama.cpp is selected, the chart also generates a local-model projection. You can rerun it with **Run llama.cpp forecast**. It gives the model the latest returns and up to 14 recent research scores available before the last price date. The chart labels the research source and draws the local model in a dash-dot line. The model returns estimates at up to five steps. Pivluma compares returns after positive and negative scores. A fading adjustment of at most 0.5 percentage points at the first step requires at least 20 matched observations, at least five positive and five negative cases, and an absolute historical correlation of at least 0.15. The model also receives a comparison with completed historical periods matched by 5- and 20-observation returns, volatility, and research tone where available. The analysis reports the number of matches and the range of subsequent outcomes. When at least eight close matches mostly point in one direction and the pattern method beats a flat-price reference in recent walk-forward tests, the chart moves up to 20% of the way from the model estimate toward the historical median return. Research scores are aggregates. The **Analyze news** shortcut explains the evidence and its limits. The llama.cpp scenario band uses statistical error widths. The walk-forward errors and XLSX export describe the statistical reference.
+When llama.cpp is selected, the chart also generates a local-model projection. You can rerun it with **Run llama.cpp forecast**. It gives the model the latest returns and up to 14 recent research scores available before the last price date. Additional inputs include RSI, drawdown, deviation from the 20-observation moving average, and comparable symbol performance when available. The chart labels the research source and draws the local model in a dash-dot line. The model returns estimates at up to five steps. Pivluma compares returns after positive and negative scores. A fading adjustment of at most 0.5 percentage points at the first step requires at least 20 matched observations, at least five positive and five negative cases, and an absolute historical correlation of at least 0.15. The model also receives a comparison with completed historical periods matched by 5- and 20-observation returns, volatility, and research tone where available. The analysis reports the number of matches and the range of subsequent outcomes. When at least eight close matches mostly point in one direction and the pattern method beats a flat-price reference in recent walk-forward tests, the chart moves up to 20% of the way from the model estimate toward the historical median return. Research scores are aggregates. The **Analyze news** shortcut explains the evidence and its limits. The llama.cpp scenario band uses statistical error widths. The walk-forward errors and XLSX export describe the statistical reference.
 
 ## Ask the local analyst
 
@@ -136,4 +136,4 @@ The data and forecasting tests use the Python standard library. Run the same com
 
 Commit and push directly to `main`. Update this README when features, setup instructions, or project status change. For each release, update the application version, verify the tests and Windows build, then tag the verified commit on main as vMAJOR.MINOR.PATCH and publish GitHub release notes with the verified Windows x64 ZIP, Setup EXE, and MSI attached.
 
-The Pivluma wordmark uses Bricolage Grotesque. [Font license](pivluma/fonts/OFL.txt)
+The Pivluma wordmark uses Kalam Bold. [Font license](pivluma/fonts/OFL.txt)

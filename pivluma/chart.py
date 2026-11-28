@@ -86,14 +86,20 @@ class PriceChart(QWidget):
         return (max(0., center - (baseline - self.result.lower[step])),
                 center + (self.result.upper[step] - baseline))
 
+    def comparison_anchor(self):
+        for day, price in zip(self.days, self.history):
+            if day in self.comparison_closes:
+                return day, price / self.comparison_closes[day]
+        return None
+
     def comparison_points(self):
-        common = [(index, self.comparison_closes[day], close)
-                  for index, (day, close) in enumerate(zip(self.visible_days(), self.visible_history()))
-                  if day in self.comparison_closes]
-        if len(common) < 2:
+        anchor = self.comparison_anchor()
+        if anchor is None:
             return []
-        scale = common[0][2] / common[0][1]
-        return [(index, close * scale) for index, close, _ in common]
+        _, scale = anchor
+        points = [(index, self.comparison_closes[day] * scale)
+                  for index, day in enumerate(self.visible_days()) if day in self.comparison_closes]
+        return points if len(points) >= 2 else []
 
     def moving_average(self):
         start, end = self.bounds()
@@ -345,16 +351,25 @@ class PriceChart(QWidget):
         painter.setPen(QColor(text))
         days = self.visible_days()
         baseline = chart.bottom() + font.height() + 6
-        painter.drawText(QPointF(chart.left(), baseline), str(days[0]))
-        end_label = str(days[-1])
-        end_x = point(start, lower).x()
+        date_width = max(font.horizontalAdvance(str(days[0])), font.horizontalAdvance(str(days[-1])))
+        history_right = point(start, lower).x()
+        horizon_x = chart.right()
         if show_forecast:
             horizon_label = f"+{len(self.llama_forecast)}"
-            horizon_x = chart.right() - font.horizontalAdvance(horizon_label)
+            horizon_x -= font.horizontalAdvance(horizon_label)
             painter.drawText(QPointF(horizon_x, baseline), horizon_label)
-            end_x = min(horizon_x - font.horizontalAdvance(end_label) - 12, end_x)
-        else:
-            end_x = min(chart.right() - font.horizontalAdvance(end_label), end_x)
-        if end_x > chart.left() + font.horizontalAdvance(str(days[0])) + 16:
-            painter.drawText(QPointF(end_x, baseline), end_label)
+        right_limit = horizon_x - (12 if show_forecast else 0)
+        label_gap = date_width + 14
+        tick_count = max(1, min(len(days) - 1, int((history_right - chart.left()) / label_gap)))
+        next_free = chart.left()
+        for index in sorted({round(start * slot / tick_count) for slot in range(tick_count + 1)}):
+            label = str(days[index])
+            width = font.horizontalAdvance(label)
+            tick_x = point(index, lower).x()
+            label_x = min(right_limit - width, max(chart.left(), tick_x - width / 2))
+            if index and label_x < next_free:
+                continue
+            painter.drawLine(QPointF(tick_x, chart.bottom()), QPointF(tick_x, chart.bottom() + 4))
+            painter.drawText(QPointF(label_x, baseline), label)
+            next_free = label_x + width + 8
         painter.end()

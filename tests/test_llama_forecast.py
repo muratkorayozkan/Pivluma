@@ -44,3 +44,15 @@ class LocalForecastTests(unittest.TestCase):
         self.assertEqual(forecast_path(body, 100, 2, patterns=evidence), (100, 100))
         evidence["beats_flat_reference"] = True
         self.assertEqual(forecast_path(body, 100, 2, patterns=evidence), (101, 102))
+
+    def test_market_context_passes_relative_movement_only_with_recent_overlap(self):
+        prices = sample_prices()
+        comparison = {price.day: 230. for price in prices}
+        inputs = forecast_input(prices, 10, {}, "", "TEST", comparison)
+        context = inputs["market_context"]
+        self.assertIn("rsi_14_simple", context)
+        self.assertIn("drawdown_percent", context)
+        self.assertEqual(context["comparison"]["symbol"], "TEST")
+        self.assertEqual(context["comparison"]["reference_return_percent"], 0)
+        del comparison[prices[-1].day]
+        self.assertIsNone(forecast_input(prices, 10, {}, "", "TEST", comparison)["market_context"]["comparison"])

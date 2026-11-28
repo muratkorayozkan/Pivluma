@@ -2,7 +2,9 @@
 import json
 from datetime import timedelta
 from math import isfinite
-from statistics import median, pstdev
+from statistics import mean, median, pstdev
+
+from pivluma.analyst import price_statistics
 
 from pivluma.patterns import historical_patterns
 from pivluma.research import research_evidence
@@ -14,13 +16,33 @@ def anchor_steps(horizon):
     return sorted({1, horizon, *(max(1, round(horizon * fraction)) for fraction in (.25, .5, .75))})
 
 
-def forecast_input(prices, horizon, scores, source):
+def forecast_input(prices, horizon, scores, source, comparison_symbol="", comparison_closes=None):
     latest = prices[-1]
     recent = prices[-42:]
     news = sorted((day, score) for day, score in scores.items()
                   if latest.day - timedelta(days=30) <= day < latest.day)[-14:]
     returns = [(right.close / left.close - 1) * 100 for left, right in zip(recent, recent[1:])]
+    stats = price_statistics(recent)
+    match = [(price.close, comparison_closes[price.day]) for price in recent
+             if comparison_closes and price.day in comparison_closes]
+    relative = None
+    if len(match) >= 6 and comparison_closes and latest.day in comparison_closes:
+        primary_change = (match[-1][0] / match[0][0] - 1) * 100
+        reference_change = (match[-1][1] / match[0][1] - 1) * 100
+        relative = {
+            "symbol": comparison_symbol, "common_observations": len(match),
+            "reference_return_percent": round(reference_change, 3),
+            "primary_minus_reference_percentage_points": round(primary_change - reference_change, 3),
+        }
     return {
+        "market_context": {
+            "rsi_14_simple": round(stats["rsi_14_simple"], 2) if stats["rsi_14_simple"] is not None else None,
+            "drawdown_percent": round(stats["max_drawdown_percent"], 3),
+            "close_vs_20_observation_average_percent": round(
+                (latest.close / mean(price.close for price in recent[-20:]) - 1) * 100, 3
+            ),
+            "comparison": relative,
+        },
         "last_close": latest.close,
         "as_of": str(latest.day),
         "price_context_percent": {
@@ -50,6 +72,8 @@ def forecast_request(facts):
         "messages": [
             {"role": "system", "content": (
                 "Predict cumulative relative percentage returns. Use historical returns as the main evidence. Compare the five-observation move, median return, and volatility before extrapolating. "
+                "Use market_context to check whether RSI, drawdown, moving average, and comparative strength "
+                "confirm the primary trend. A comparison may be absent. "
                 "Check research_evidence for the number of observations, differences in subsequent returns, "
                 "and correlation. Treat scores as weak evidence and do not infer specific events. "
                 "Compare the current regime with historical_patterns. Its median is a reference for the last "

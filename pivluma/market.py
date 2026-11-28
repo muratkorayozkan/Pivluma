@@ -201,6 +201,7 @@ class MarketFeed(QObject):
         status = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
         if key is not None and status == 401:
             self.report("Twelve Data · API key was rejected.")
+            self.history_warning.emit("Twelve Data · API key was rejected.")
             return
         if reply.error() != QNetworkReply.NetworkError.NoError:
             message = "Twelve Data · History request failed. Check connection and account access."
