@@ -27,6 +27,7 @@ class PriceChart(QWidget):
         self.colors = colors_for("dark-blue", Qt.ColorScheme.Dark)
         self.result = None
         self.llama_forecast = ()
+        self.calibrated_bands = ()
         self.comparison_symbol = ""
         self.comparison_closes = {}
         self.language = "en"
@@ -81,6 +82,8 @@ class PriceChart(QWidget):
         return self.layers["llama_band"] and self.llama_visible()
 
     def llama_bounds(self, step):
+        if step < len(self.calibrated_bands) and (band := self.calibrated_bands[step]) is not None:
+            return band.lower, band.upper
         center = self.llama_forecast[step]
         baseline = self.result.forecast[step]
         return (max(0., center - (baseline - self.result.lower[step])),
@@ -181,8 +184,18 @@ class PriceChart(QWidget):
         text = template.format(step=step + 1, price=self.llama_forecast[step])
         if self.llama_band_visible():
             lower, upper = self.llama_bounds(step)
-            band = translate(self.language, "llama.cpp scenario band")
+            calibrated = step < len(self.calibrated_bands) and self.calibrated_bands[step] is not None
+            band = translate(self.language, "Calibrated llama band" if calibrated else "llama.cpp scenario band")
             text += f" · {band} [{lower:.8g}, {upper:.8g}]"
+            if calibrated:
+                entry = self.calibrated_bands[step]
+                samples = translate(self.language, "{count} calibration samples").format(count=entry.samples)
+                text += f" · {samples}"
+                if entry.checked:
+                    coverage = translate(self.language, "Past band coverage {percent:.0f}% ({count} checked).").format(
+                        percent=100 * entry.covered / entry.checked, count=entry.checked
+                    )
+                    text += f" · {coverage}"
         return text
 
     def index_at(self, position):

@@ -3,7 +3,7 @@ import unittest
 from datetime import date, timedelta
 
 from pivluma.data import Price, sample_prices
-from pivluma.lab import ForecastStore, replay, terminal_mae
+from pivluma.lab import ForecastStore, paired_input_errors, replay, terminal_mae
 from pivluma.news import align_scores
 
 
@@ -46,3 +46,29 @@ class ForecastLabTests(unittest.TestCase):
         store.reconcile("S", [Price(origin, 100), Price(origin + timedelta(days=1), 101)])
         store.reconcile("S", [Price(origin + timedelta(days=20), 120), Price(origin + timedelta(days=21), 121)])
         self.assertEqual(store.runs("S")[0][3], [["2026-01-03", 101]])
+
+    def test_calibration_requires_prospective_records_and_reports_rolling_coverage(self):
+        connection = sqlite3.connect(":memory:")
+        self.addCleanup(connection.close)
+        store = ForecastStore(connection)
+        initial = date(2026, 1, 1)
+        for index in range(25):
+            origin = initial + timedelta(days=index)
+            store.save("S", origin, "llama.cpp", (100,), origin_close=100,
+                       recorded_on=origin, bands=[(98, 101)])
+        recent = initial + timedelta(days=25)
+        store.save("S", recent, "llama.cpp", (1,), origin_close=100, recorded_on=recent + timedelta(days=2))
+        history = [Price(initial + timedelta(days=index), 102) for index in range(27)]
+        store.reconcile("S", history)
+        first, second = store.calibrate("S", recent + timedelta(days=1), 200, (200, 200))
+        self.assertEqual(first.samples, 25)
+        self.assertEqual((first.lower, first.upper), (196, 204))
+        self.assertEqual((first.covered, first.checked), (5, 5))
+        self.assertIsNone(second)
+        self.assertGreater(next(store.watch_rows(["S"]))[4], 0)
+
+    def test_paired_errors_drop_incomplete_origins_for_every_variant(self):
+        variants = ("price", "news")
+        data = {1: (14., 10., {"price": 13., "news": 14.}), 2: (20., 10., {"news": 10.})}
+        count, flat, errors = paired_input_errors(data, variants)
+        self.assertEqual((count, flat, errors), (1, 4., {"price": 1., "news": 0.}))

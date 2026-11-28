@@ -2,8 +2,10 @@
 
 import json
 import platform
+import sqlite3
 import sys
 from pathlib import Path
+from contextlib import closing
 
 from PySide6.QtCore import QByteArray, QSize, Qt, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QIcon, QPainter, QPixmap
@@ -11,11 +13,12 @@ from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequ
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPlainTextEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget,
+    QHeaderView, QPlainTextEdit, QPushButton, QScrollArea, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from pivluma import __version__
 from pivluma.appearance import THEMES
+from pivluma.lab import ForecastStore
 from pivluma.local_assets import ready, supported
 from pivluma.local_model import LOCAL_MODEL
 from pivluma.model_download import DownloadDialog
@@ -324,6 +327,54 @@ def tradingview_dialog(window):
         dialog.exec()
     finally:
         window.market.history.disconnect(update_actions)
+        dialog.deleteLater()
+
+
+def watch_forecasts_dialog(window):
+    dialog = _dialog(window, "Watchlist forecasts")
+    dialog.resize(770, 485)
+    layout = QVBoxLayout(dialog)
+    note = QLabel(window.text(
+        "The watchlist uses locally recorded outcomes. Open a symbol to refresh its closing history."
+    ))
+    note.setWordWrap(True)
+    layout.addWidget(note)
+    columns = ("Symbol", "Latest origin", "Steps", "Final forecast", "Final actual", "Completed", "Pending", "Outside band")
+    table = QTableWidget(0, len(columns))
+    table.setHorizontalHeaderLabels([window.text(key) for key in columns])
+    table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+    table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+    table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+    table.verticalHeader().hide()
+    layout.addWidget(table)
+    symbols = tuple(window.watchlist)
+    try:
+        with closing(sqlite3.connect(window.database)) as connection:
+            store = ForecastStore(connection)
+            if window.series_symbol and window.prices:
+                store.reconcile(window.series_symbol, window.prices)
+            rows = list(store.watch_rows(symbols))
+    except (sqlite3.Error, ValueError):
+        rows = []
+        note.setText(window.text("Forecast journal unavailable."))
+    table.setRowCount(len(rows))
+    for index, (symbol, latest, pending, completed, outside, checked) in enumerate(rows):
+        origin, _, steps, expected, actual = latest or ("—", "", "—", "—", None)
+        values = (symbol, origin, steps, expected, actual if actual is not None else "—",
+                  completed, pending, f"{outside}/{checked}" if checked else "—")
+        for column, value in enumerate(values):
+            table.setItem(index, column, QTableWidgetItem(f"{value:.8g}" if isinstance(value, float) else str(value)))
+
+    def open_symbol(row, _):
+        if 0 <= row < len(rows):
+            dialog.accept()
+            window.open_watch_symbol(rows[row][0])
+
+    table.cellDoubleClicked.connect(open_symbol)
+    _buttons(dialog, layout, QDialogButtonBox.StandardButton.Close)
+    try:
+        dialog.exec()
+    finally:
         dialog.deleteLater()
 
 

@@ -8,11 +8,19 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
-from pivluma.lab import ForecastStore, replay, replay_origins, terminal_mae
+from pivluma.lab import ForecastStore, paired_input_errors, replay, replay_origins, terminal_mae
 from pivluma.llama_forecast import forecast_input, forecast_path
 from pivluma.local_assets import ready
 from pivluma.local_model import LocalModel
 from pivluma.news import align_scores
+
+
+VARIANTS = (
+    (False, False, "Prices only"),
+    (True, False, "Prices and news"),
+    (False, True, "Prices and indicators"),
+    (True, True, "Prices, news, and indicators"),
+)
 
 
 class ReplayThread(QThread):
@@ -46,6 +54,7 @@ class ForecastLab(QDialog):
         self.job = None
         self.local_rows = []
         self.results = []
+        self.paired_outcomes = {}
         self.setWindowTitle(self.text("Forecast Lab"))
         available = window.screen().availableGeometry()
         self.resize(min(960, available.width() - 30), min(630, available.height() - 50))
@@ -77,6 +86,12 @@ class ForecastLab(QDialog):
         self.input_button.clicked.connect(self.run_contribution)
         inputs.addWidget(self.input_button, alignment=Qt.AlignmentFlag.AlignLeft)
         self.input_table = self.table(inputs, ("Inputs", "Final forecast", "Change vs. prices only"))
+        self.paired_button = QPushButton(self.text("Replay all input combinations"))
+        self.paired_button.setEnabled(self.has_replay())
+        self.paired_button.clicked.connect(self.run_paired_replay)
+        inputs.addWidget(self.paired_button, alignment=Qt.AlignmentFlag.AlignLeft)
+        self.paired_status = self.note(inputs, "Replays up to three origins. Errors use only origins shared by all combinations.")
+        self.paired_table = self.table(inputs, ("Inputs", "Final-step MAE", "MAE change vs. prices only"))
 
         history = self.page(tabs, "Forecast journal")
         self.history_note = self.note(
@@ -151,17 +166,45 @@ class ForecastLab(QDialog):
 
     def run_contribution(self):
         self.results = []
-        self.jobs = [("inputs", len(self.prices), news, indicators)
-                     for news, indicators in ((False, False), (True, False), (False, True), (True, True))]
+        self.jobs = [("inputs", len(self.prices), news, indicators) for news, indicators, _ in VARIANTS]
         self.next_job()
+
+    def has_replay(self):
+        return ready(self.model.root) and bool(replay_origins(self.prices, self.horizon))
+
+    def run_paired_replay(self):
+        self.paired_outcomes = {}
+        self.fill(self.paired_table, [])
+        self.jobs = [("paired", origin, news, indicators)
+                     for origin in replay_origins(self.prices, self.horizon, 3)
+                     for news, indicators, _ in VARIANTS]
+        self.next_job()
+
+    def show_paired_errors(self):
+        variants = [(news, indicators) for news, indicators, _ in VARIANTS]
+        count, flat, errors = paired_input_errors(self.paired_outcomes, variants)
+        if not count:
+            self.paired_status.setText(self.text("No origins had valid predictions for all input combinations."))
+            return
+        reference = errors[(False, False)]
+        self.fill(self.paired_table, [
+            (self.text(label), errors[(news, indicators)], errors[(news, indicators)] - reference)
+            for news, indicators, label in VARIANTS
+        ])
+        message = self.text("{count} shared origins · Flat-price MAE {flat:.4g}.", count=count, flat=flat)
+        if not self.scores:
+            message += " " + self.text("No news scores loaded.")
+        self.paired_status.setText(message)
 
     def next_job(self):
         if not self.jobs:
-            self.local_button.setEnabled(ready(self.model.root) and bool(replay_origins(self.prices, self.horizon)))
+            self.local_button.setEnabled(self.has_replay())
             self.input_button.setEnabled(ready(self.model.root))
+            self.paired_button.setEnabled(self.has_replay())
             return
         self.local_button.setEnabled(False)
         self.input_button.setEnabled(False)
+        self.paired_button.setEnabled(False)
         self.job = mode, origin, news, indicators = self.jobs.pop(0)
         history = self.prices[:origin]
         facts = forecast_input(
@@ -171,7 +214,10 @@ class ForecastLab(QDialog):
         if not indicators:
             facts.pop("market_context", None)
         target = self.local_status if mode == "replay" else self.input_note
-        target.setText(self.text("Running local model…"))
+        if mode == "paired":
+            self.paired_status.setText(self.text("Running local model… {remaining} requests left.", remaining=len(self.jobs) + 1))
+        else:
+            target.setText(self.text("Running local model…"))
         self.facts = facts
         self.model.start_forecast(facts)
 
@@ -200,6 +246,13 @@ class ForecastLab(QDialog):
                 else:
                     message = self.text("No valid local forecasts were returned.")
                 self.local_status.setText(message)
+        elif mode == "paired":
+            actual = self.prices[origin + self.horizon - 1].close
+            _, _, predictions = self.paired_outcomes.setdefault(origin, (actual, history[-1].close, {}))
+            if value is not None:
+                predictions[(news, indicators)] = value
+            if not self.jobs:
+                self.show_paired_errors()
         else:
             label = ("Prices, news, and indicators" if news and indicators else
                      "Prices and news" if news else "Prices and indicators" if indicators else "Prices only")

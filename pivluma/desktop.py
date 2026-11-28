@@ -20,7 +20,7 @@ from pivluma.analyst import answer, price_statistics
 from pivluma.appearance import THEMES, animations_enabled, colors_for, install_brand_font, stylesheet
 from pivluma.chart import PriceChart
 from pivluma.data import PriceStore, read_prices, sample_prices
-from pivluma.dialogs import about_dialog, axis_dialog, history_dialog, settings_dialog, shortcuts_dialog, tradingview_dialog
+from pivluma.dialogs import about_dialog, axis_dialog, history_dialog, settings_dialog, shortcuts_dialog, tradingview_dialog, watch_forecasts_dialog
 from pivluma.export import write_forecast
 from pivluma.forecast import NEWS_MODEL, TRAINING_WINDOW, analyze
 from pivluma.lab import ForecastStore
@@ -204,6 +204,11 @@ class Dashboard(QMainWindow):
         self.dataset.setWordWrap(True)
         self.dataset.setObjectName("dataset")
         layout.addWidget(self.dataset)
+        self.freshness = QLabel()
+        self.freshness.setTextFormat(Qt.TextFormat.PlainText)
+        self.freshness.setWordWrap(True)
+        self.freshness.setObjectName("dataFreshness")
+        layout.addWidget(self.freshness)
         self.workspace_stack = QStackedWidget()
         self.workspace_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.workspace_splitter.setChildrenCollapsible(False)
@@ -289,7 +294,7 @@ class Dashboard(QMainWindow):
         chart_layout.addWidget(self.point_details)
         self.chart.selected.connect(self.show_chart_point)
         self.chart_legend = self.localized_label(
-            "Closing price  /  Dash-dot llama forecast  /  Dotted scenario band"
+            "Closing price  /  Dash-dot llama forecast  /  Dotted llama band"
         )
         self.chart_legend.setWordWrap(True)
         chart_layout.addWidget(self.chart_legend)
@@ -496,6 +501,9 @@ class Dashboard(QMainWindow):
         action.setEnabled(bool(re.fullmatch(r"[A-Z0-9][A-Z0-9./:_-]{0,31}", symbol)))
         action.triggered.connect(lambda: self.toggle_watch_symbol(symbol))
         self.watch_menu.addSeparator()
+        monitor = self.watch_menu.addAction(self.text("Watchlist forecasts"))
+        monitor.setEnabled(bool(self.watchlist))
+        monitor.triggered.connect(lambda: watch_forecasts_dialog(self))
         if not self.watchlist:
             self.watch_menu.addAction(self.text("No saved symbols")).setEnabled(False)
         for entry in self.watchlist:
@@ -647,6 +655,7 @@ class Dashboard(QMainWindow):
         self.market_status.setText(self.text(message))
         busy = message.endswith(("Loading daily history", "Connecting quote stream", "Awaiting subscription"))
         self.market_progress.setVisible(self.motion_enabled and busy)
+        self.update_freshness()
 
     def receive_market_warning(self, message):
         self.set_history_warning(message)
@@ -890,8 +899,31 @@ class Dashboard(QMainWindow):
         streaming = self.last_quote is not None and self.market.provider == "Twelve Data"
         self.provider_credit.setVisible(historical or streaming)
 
+    def update_freshness(self):
+        prices = getattr(self, "prices", ())
+        if prices:
+            source = self.text(self.series_source)
+            mode = ("Example data" if self.series_source == "Synthetic sample" else
+                    "Saved history" if self.series_source in ("Stored CSV", "Imported CSV", "Saved equity closes") else
+                    "Daily reference rates" if self.series_source == "ECB daily reference rates" else "Provider history")
+            if mode in ("Provider history", "Daily reference rates") and (datetime.now().date() - prices[-1].day).days > 4:
+                mode = "Older closing history"
+            message = self.text("{mode} · {source} · Last close {date}", mode=self.text(mode),
+                                source=source, date=prices[-1].day)
+        else:
+            message = self.text("Closing history unavailable.")
+        if self.last_quote is not None:
+            stamp = self.last_quote[1]
+            stale = self.stream_lost or (datetime.now(timezone.utc) - stamp).total_seconds() >= 120
+            kind = ("Last received quote" if stale else "Periodic quote"
+                    if "REST quote" in self.market_message else "Streaming quote")
+            message += " · " + self.text("{kind} at {time}", kind=self.text(kind),
+                                         time=stamp.astimezone().strftime("%Y-%m-%d %H:%M:%S UTC%z"))
+        self.freshness.setText(message)
+
     def update_quote(self):
         self.update_provider_credit()
+        self.update_freshness()
         if self.last_quote is None:
             self.quote_label.clear()
             self.quote_label.hide()
@@ -996,6 +1028,12 @@ class Dashboard(QMainWindow):
         self.horizon.setMaximum(min(MAX_HORIZON, len(prices) - TRAINING_WINDOW - 9))
         self.horizon.blockSignals(False)
         self.refresh()
+        if symbol and self.database.is_absolute() and self.database.is_file():
+            try:
+                with closing(sqlite3.connect(self.database)) as connection:
+                    ForecastStore(connection).reconcile(symbol, prices)
+            except (sqlite3.Error, ValueError):
+                self.status.setText(self.text("Forecast journal unavailable."))
         self.chart.reveal(history=True)
 
     def ask_topic(self, prompt):
@@ -1164,6 +1202,7 @@ class Dashboard(QMainWindow):
 
     def clear_llama_forecast(self):
         self.chart.llama_forecast = ()
+        self.chart.calibrated_bands = ()
         self.chart.hover_index = None
         self.chart.selected_index = None
         self.llama_message = ""
@@ -1180,7 +1219,22 @@ class Dashboard(QMainWindow):
         self.llama_button.setEnabled(bool(self.prices) and not self.llama_pending)
         self.llama_status.setVisible(bool(self.llama_message))
         source = self.text(self.llama_source or "Price history only")
-        self.llama_status.setText(self.text(self.llama_message, source=source))
+        message = self.text(self.llama_message, source=source)
+        bands = self.chart.calibrated_bands
+        if self.chart.llama_forecast and not any(band is not None for band in bands):
+            message += " " + self.text("Dotted limits use the statistical scenario band.")
+        if bands and any(band is not None for band in bands):
+            calibrated = sum(band is not None for band in bands)
+            message += " " + self.text("{count}/{steps} steps use calibrated llama bounds.",
+                                      count=calibrated, steps=len(bands))
+            if last := bands[-1]:
+                message += " " + self.text("Final step: {count} calibration samples.", count=last.samples)
+                if last.checked:
+                    message += " " + self.text("Past band coverage {percent:.0f}% ({count} checked).",
+                                              percent=100 * last.covered / last.checked, count=last.checked)
+            if calibrated < len(bands):
+                message += " " + self.text("Other steps use the scenario band.")
+        self.llama_status.setText(message)
 
     def request_llama_forecast(self):
         self.llama_timer.stop()
@@ -1211,13 +1265,19 @@ class Dashboard(QMainWindow):
         except (OverflowError, ValueError):
             self.llama_message = "llama.cpp forecast unavailable."
         else:
-            self.llama_message = "Dash-dot line · llama.cpp forecast · {source}. Dotted limits reuse the statistical error widths."
+            self.llama_message = "Dash-dot line · llama.cpp forecast · {source}."
             if self.series_symbol and self.database.is_absolute():
                 try:
                     with closing(sqlite3.connect(self.database)) as connection:
                         store = ForecastStore(connection)
-                        store.save(self.series_symbol, self.prices[-1].day, "llama.cpp", self.chart.llama_forecast)
                         store.reconcile(self.series_symbol, self.prices)
+                        latest = self.prices[-1]
+                        self.chart.calibrated_bands = store.calibrate(
+                            self.series_symbol, latest.day, latest.close, self.chart.llama_forecast
+                        )
+                        snapshot = [self.chart.llama_bounds(step) for step in range(len(self.chart.llama_forecast))]
+                        store.save(self.series_symbol, latest.day, "llama.cpp", self.chart.llama_forecast,
+                                   origin_close=latest.close, bands=snapshot)
                 except (sqlite3.Error, ValueError):
                     self.status.setText(self.text("Forecast journal unavailable."))
             self.chart.reveal()
@@ -1246,6 +1306,7 @@ class Dashboard(QMainWindow):
         self.status.clear()
 
     def update_summary(self):
+        self.update_freshness()
         if not self.prices:
             self.dataset.setText(self.text("{symbol} · No price history loaded", symbol=self.series_symbol))
             self.metrics.clear()

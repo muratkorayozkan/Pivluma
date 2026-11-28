@@ -1,5 +1,8 @@
 """Causal forecast replays and persistent forecast outcomes."""
 import json
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from math import ceil
 from statistics import mean
 
 from pivluma.forecast import TRAINING_WINDOW, analyze
@@ -27,6 +30,34 @@ def terminal_mae(rows, index):
     return mean(abs(row[index] - row[1]) for row in rows) if rows else None
 
 
+MIN_CALIBRATION = 20
+
+
+@dataclass(frozen=True)
+class CalibratedBand:
+    lower: float
+    upper: float
+    samples: int
+    covered: int
+    checked: int
+
+
+def _radius(errors):
+    return sorted(errors)[ceil(.9 * len(errors)) - 1]
+
+
+def paired_input_errors(outcomes, variants):
+    complete = [row for row in outcomes.values() if all(variant in row[2] for variant in variants)]
+    if not complete:
+        return 0, None, {}
+    flat = mean(abs(actual - previous) for actual, previous, _ in complete)
+    errors = {
+        variant: mean(abs(predictions[variant] - actual) for actual, _, predictions in complete)
+        for variant in variants
+    }
+    return len(complete), flat, errors
+
+
 class ForecastStore:
     def __init__(self, connection):
         self.connection = connection
@@ -38,16 +69,81 @@ class ForecastStore:
                 engine TEXT NOT NULL,
                 predicted TEXT NOT NULL,
                 observed TEXT NOT NULL DEFAULT '[]',
+                origin_close REAL,
+                recorded_on TEXT,
+                bands TEXT,
                 UNIQUE(symbol, origin, engine, predicted)
             )
         """)
 
-    def save(self, symbol, origin, engine, path):
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(forecast_runs)")}
+        for column, definition in (("origin_close", "REAL"), ("recorded_on", "TEXT"), ("bands", "TEXT")):
+            if column not in columns:
+                connection.execute(f"ALTER TABLE forecast_runs ADD COLUMN {column} {definition}")
+
+    def save(self, symbol, origin, engine, path, *, origin_close=None, bands=None, recorded_on=None):
+        recorded_on = recorded_on or datetime.now(timezone.utc).date()
         with self.connection:
             self.connection.execute(
-                "INSERT OR IGNORE INTO forecast_runs(symbol, origin, engine, predicted) VALUES (?, ?, ?, ?)",
-                (symbol, origin.isoformat(), engine, json.dumps(list(path), allow_nan=False)),
+                "INSERT OR IGNORE INTO forecast_runs(symbol, origin, engine, predicted, origin_close, recorded_on, bands) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (symbol, origin.isoformat(), engine, json.dumps(list(path), allow_nan=False),
+                 origin_close, recorded_on.isoformat(), json.dumps(bands, allow_nan=False)),
             )
+
+    def calibrate(self, symbol, cutoff, origin_close, path):
+        cutoff = cutoff.isoformat()
+        rows = self.connection.execute(
+            "SELECT origin, predicted, observed, origin_close, recorded_on FROM forecast_runs "
+            "WHERE symbol = ? AND engine = 'llama.cpp' AND origin < ? AND origin_close > 0 "
+            "AND recorded_on IS NOT NULL ORDER BY origin DESC, id ASC LIMIT 1000",
+            (symbol, cutoff),
+        )
+        history = [{} for _ in path]
+        for origin, predicted, observed, close, recorded in rows:
+            for step, (estimate, (day, actual)) in enumerate(zip(json.loads(predicted), json.loads(observed))):
+                if step >= len(path):
+                    break
+                if recorded < day <= cutoff:
+                    history[step].setdefault(origin, (day, abs(actual - estimate) / close))
+
+        bands = []
+        for estimate, observations in zip(path, history):
+            if len(observations) < MIN_CALIBRATION:
+                bands.append(None)
+                continue
+            available, checked, covered = [], 0, 0
+            for origin, (day, error) in sorted(observations.items()):
+                known = [value for outcome, value in available if outcome <= origin]
+                if len(known) >= MIN_CALIBRATION:
+                    checked += 1
+                    covered += error <= _radius(known)
+                available.append((day, error))
+            radius = _radius([error for _, error in observations.values()]) * origin_close
+            bands.append(CalibratedBand(max(0., estimate - radius), estimate + radius,
+                                        len(observations), covered, checked))
+        return tuple(bands)
+
+    def watch_rows(self, symbols):
+        for symbol in symbols:
+            rows = self.connection.execute(
+                "SELECT origin, engine, predicted, observed, bands FROM forecast_runs WHERE symbol = ? "
+                "ORDER BY origin DESC, id DESC LIMIT 100", (symbol,),
+            )
+            pending = completed = outside = checked = 0
+            latest = None
+            for origin, engine, predicted, observed, bands in rows:
+                path, actual = json.loads(predicted), json.loads(observed)
+                bounds = json.loads(bands) if bands else None
+                if latest is None:
+                    latest = (origin, engine, len(path), path[-1], actual[-1][1] if len(actual) >= len(path) else None)
+                pending += len(actual) < len(path)
+                completed += len(actual) >= len(path)
+                for value, interval in zip(actual, bounds or ()):
+                    if interval is not None:
+                        checked += 1
+                        outside += not interval[0] <= value[1] <= interval[1]
+            yield symbol, latest, pending, completed, outside, checked
 
     def reconcile(self, symbol, prices):
         rows = self.connection.execute(
