@@ -410,6 +410,7 @@ class Dashboard(QMainWindow):
 
     def brand(self):
         group = QWidget()
+        group.setObjectName("brand")
         layout = QHBoxLayout(group)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(7)

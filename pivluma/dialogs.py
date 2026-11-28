@@ -3,10 +3,12 @@
 import json
 import platform
 import sys
+from pathlib import Path
 
-from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import QByteArray, QSize, Qt, QUrl
+from PySide6.QtGui import QColor, QDesktopServices, QIcon, QPainter, QPixmap
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
     QPlainTextEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget,
@@ -112,11 +114,24 @@ def shortcuts_dialog(window):
     dialog.exec()
 
 
+def social_icon(window, filename):
+    file = Path(__file__).with_name("assets") / filename
+    foreground = b"white" if QColor(window.chart.colors[1]).lightness() < 128 else b"black"
+    contents = file.read_bytes().replace(b'fill="currentColor"', b"")
+    contents = contents.replace(b"<path ", b'<path fill="' + foreground + b'" ')
+    pixmap = QPixmap(24, 24)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    QSvgRenderer(QByteArray(contents)).render(painter)
+    painter.end()
+    return QIcon(pixmap)
+
+
 def about_dialog(window):
     dialog = _dialog(window, "About Pivluma")
     dialog.setWindowIcon(window.windowIcon())
     available = window.screen().availableGeometry()
-    dialog.resize(min(600, available.width() - 48), min(515, available.height() - 80))
+    dialog.resize(min(600, available.width() - 48), min(590, available.height() - 80))
     layout = QVBoxLayout(dialog)
     layout.setContentsMargins(18, 18, 18, 14)
     scroll = QScrollArea()
@@ -131,19 +146,12 @@ def about_dialog(window):
 
     header = QWidget()
     header.setProperty("aboutCard", True)
-    branding = QHBoxLayout(header)
+    branding = QVBoxLayout(header)
     branding.setContentsMargins(16, 14, 16, 14)
-    icon = QLabel()
-    icon.setPixmap(window.windowIcon().pixmap(48, 48))
-    branding.addWidget(icon, alignment=Qt.AlignmentFlag.AlignTop)
-    summary = QVBoxLayout()
-    title = QLabel("Pivluma")
-    title.setObjectName("title")
-    summary.addWidget(title)
+    branding.addWidget(window.brand())
     description = QLabel(window.text("A Windows application for market data, forecasting, and local analysis."))
     description.setWordWrap(True)
-    summary.addWidget(description)
-    branding.addLayout(summary, 1)
+    branding.addWidget(description)
     sections.addWidget(header)
 
     system = f"{platform.system()} · {platform.machine()}"
@@ -160,6 +168,29 @@ def about_dialog(window):
         grid.addWidget(field, index, 1)
     grid.setColumnStretch(1, 1)
     sections.addWidget(details)
+
+    developer = QWidget()
+    developer.setProperty("aboutCard", True)
+    developer_row = QHBoxLayout(developer)
+    developer_row.setContentsMargins(16, 12, 16, 12)
+    identity = QVBoxLayout()
+    developer_title = QLabel(window.text("Developer"))
+    developer_title.setProperty("sectionTitle", True)
+    identity.addWidget(developer_title)
+    identity.addWidget(QLabel("Murat Koray Özkan"))
+    developer_row.addLayout(identity, 1)
+    for network, filename, url, hint in (
+        ("GitHub", "mark-github-24.svg", "https://github.com/muratkorayozkan", "Open developer profile on GitHub"),
+        ("Instagram", "instagram.svg", "https://www.instagram.com/muratkorayozkan", "Open developer profile on Instagram"),
+    ):
+        profile = QPushButton(network)
+        profile.setIcon(social_icon(window, filename))
+        profile.setIconSize(QSize(18, 18))
+        profile.setToolTip(window.text(hint))
+        profile.setAccessibleName(window.text(hint))
+        profile.clicked.connect(lambda checked=False, address=url: QDesktopServices.openUrl(QUrl(address)))
+        developer_row.addWidget(profile, alignment=Qt.AlignmentFlag.AlignVCenter)
+    sections.addWidget(developer)
 
     updates = QWidget()
     updates.setProperty("aboutCard", True)

@@ -3,6 +3,9 @@
 from pivluma.chinese import CHINESE
 
 TURKISH = {
+    "Open developer profile on Instagram": "Geliştiricinin Instagram profilini aç",
+    "Developer": "Geliştirici",
+    "Open developer profile on GitHub": "Geliştiricinin GitHub profilini aç",
     "All symbols": "Tüm semboller",
     "Symbol category": "Sembol kategorisi",
     "Forecast Lab": "Tahmin Laboratuvarı",

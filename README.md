@@ -40,7 +40,7 @@ Use the **Language** menu to switch between **EN · English**, **TR · Türkçe*
 
 The chart and analyst appear side by side in wide windows and in separate tabs in compact windows. Choose **Chart history** to change the number of closing prices displayed. Use the mouse wheel over the plot to zoom and drag the plot left or right to move through history. Hover over a point for details, or click to select it. Use **Reset chart** to return to the latest 120 observations and automatic price scaling. Layer toggles control observed closes, the 20-observation moving average, and the llama.cpp line and scenario band. The chart follows the Windows animation preference. When the view moves away from the latest close, it shows historical data for that period. Click any historical or forecast point to inspect its value and, for a forecast, its interval. **Price axis** can set the lower and upper limits or restore automatic scaling.
 
-The upper-right controls open revision history, the about page, and settings. **Settings → Theme** includes a Windows system option and light and dark palettes. The theme is remembered on this PC. Revision history loads recent published GitHub release notes. **About** shows the running version and package type and lets you copy those details, check for updates, view the release notes, or report a problem.
+The upper-right controls open revision history, the about page, and settings. **Settings → Theme** includes a Windows system option and light and dark palettes. The theme is remembered on this PC. Revision history loads recent published GitHub release notes. **About** shows the developer’s GitHub and Instagram profiles, the running version, and package type and lets you copy those details, check for updates, view the release notes, or report a problem.
 
 Open **Watchlist** beside the symbol picker to save the current symbol or reopen a saved one. The list is stored on this PC. Selecting a saved symbol updates the same chart, forecast, and analyst context used by the symbol picker. Use **Chart focus** or **Ctrl+Shift+F** to make more room for the chart. The price summary shows the change from the previous observation, which can be an earlier working day for FX.
 
@@ -149,3 +149,7 @@ The data and forecasting tests use the Python standard library. Run the same com
 Commit and push directly to `main`. Update this README when features, setup instructions, or project status change. For each release, update the application version, verify the tests and Windows build, then tag the verified commit on main as vMAJOR.MINOR.PATCH and publish GitHub release notes with the verified Windows x64 ZIP, Setup EXE, and MSI attached.
 
 The Pivluma wordmark uses Kalam Bold. [Font license](pivluma/fonts/OFL.txt)
+
+The GitHub profile uses the GitHub Mark from Primer Octicons. [Octicons license](pivluma/assets/OCTICONS-LICENSE.txt)
+
+The Instagram glyph comes from Bootstrap Icons. [Bootstrap Icons license](pivluma/assets/BOOTSTRAP-ICONS-LICENSE.txt)

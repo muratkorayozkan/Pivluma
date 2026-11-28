@@ -59,6 +59,7 @@ def stylesheet(colors):
     return f"""
         QWidget {{ background: {background}; color: {text}; font-size: 14px; }}
         QWidget[aboutCard="true"] {{ background: {surface}; border-radius: 8px; }}
+        QWidget[aboutCard="true"] QWidget#brand {{ background: transparent; }}
         QWidget[aboutCard="true"] QLabel {{ background: transparent; }}
         QLabel#title {{ font-family: "Kalam", "Segoe UI"; font-size: 37px; font-weight: 700; }}
         QLabel[sectionTitle="true"] {{ font-size: 17px; font-weight: 650; }}

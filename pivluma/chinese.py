@@ -1,6 +1,9 @@
 """Simplified Chinese desktop translations."""
 
 CHINESE = {
+    "Open developer profile on Instagram": "打开开发者的 Instagram 个人资料",
+    "Developer": "开发者",
+    "Open developer profile on GitHub": "打开开发者的 GitHub 个人资料",
     "All symbols": "全部品种",
     "Symbol category": "品种类别",
     "Forecast Lab": "预测实验室",
