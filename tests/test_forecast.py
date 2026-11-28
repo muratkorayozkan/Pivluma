@@ -24,6 +24,13 @@ class ForecastTests(unittest.TestCase):
         self.assertIn((120, 23), result.validation)
         self.assertEqual(result.forecast[-1], 270.0)
 
+    def test_steady_percentage_growth_selects_return_trend(self):
+        prices = [100 * 1.012 ** day for day in range(100)]
+        result = analyze(prices, horizon=20)
+        self.assertEqual(result.model, "Robust return trend")
+        self.assertAlmostEqual(result.forecast[-1], 100 * 1.012 ** 119)
+        self.assertLess(result.mae, 0.001)
+
     def test_rejects_nonfinite_prices(self):
         with self.assertRaises(ValueError):
             analyze([100.0] * 39 + [float("nan")], horizon=3)

@@ -28,7 +28,7 @@ class PriceChart(QWidget):
         self.result = None
         self.llama_forecast = ()
         self.language = "en"
-        self.layers = {"close": True, "average": False, "forecast": True, "interval": True}
+        self.layers = {"close": True, "average": False, "forecast": True, "interval": True, "llama": True, "llama_band": True}
         self.drag_start = None
         self.drag_offset = 0
         self.dragged = False
@@ -48,7 +48,21 @@ class PriceChart(QWidget):
         return self.days[start:end]
 
     def forecast_visible(self):
-        return self.history_offset == 0 and (self.layers["forecast"] or self.layers["interval"] or self.llama_forecast)
+        return self.history_offset == 0 and (
+            self.layers["forecast"] or self.layers["interval"] or self.llama_visible() or self.llama_band_visible()
+        )
+
+    def llama_visible(self):
+        return self.layers["llama"] and bool(self.llama_forecast)
+
+    def llama_band_visible(self):
+        return self.layers["llama_band"] and self.llama_visible()
+
+    def llama_bounds(self, step):
+        center = self.llama_forecast[step]
+        baseline = self.result.forecast[step]
+        return (max(0., center - (baseline - self.result.lower[step])),
+                center + (self.result.upper[step] - baseline))
 
     def moving_average(self):
         start, end = self.bounds()
@@ -64,8 +78,11 @@ class PriceChart(QWidget):
             if self.layers["interval"]:
                 values.extend(self.result.lower)
                 values.extend(self.result.upper)
-        if self.history_offset == 0:
+        if self.history_offset == 0 and self.llama_visible():
             values.extend(self.llama_forecast)
+        if self.history_offset == 0 and self.llama_band_visible():
+            for step in range(len(self.llama_forecast)):
+                values.extend(self.llama_bounds(step))
         if self.layers["average"]:
             values.extend(value for _, value in self.moving_average())
         lower, upper = min(values), max(values)
@@ -126,9 +143,13 @@ class PriceChart(QWidget):
         )
         text = template.format(step=step + 1, price=self.result.forecast[step],
                                lower=self.result.lower[step], upper=self.result.upper[step])
-        if self.llama_forecast:
+        if self.llama_visible():
             label = translate(self.language, "llama.cpp forecast")
             text += f" · {label} {self.llama_forecast[step]:.8g}"
+            if self.llama_band_visible():
+                lower, upper = self.llama_bounds(step)
+                band = translate(self.language, "llama.cpp scenario band")
+                text += f" · {band} [{lower:.8g}, {upper:.8g}]"
         return text
 
     def index_at(self, position):
@@ -225,6 +246,11 @@ class PriceChart(QWidget):
         painter.save()
         painter.setClipRect(chart.adjusted(-1, -1, 1, 1))
         start = len(history) - 1
+        llama_color = QColor("#fbbf65" if QColor(surface).lightness() < 128 else "#9a4900")
+        if show_forecast:
+            boundary = point(start, lower).x()
+            painter.setPen(QPen(QColor(grid), 1, Qt.PenStyle.DashLine))
+            painter.drawLine(QPointF(boundary, chart.top()), QPointF(boundary, chart.bottom()))
         if show_forecast and self.layers["interval"]:
             top = [point(start, history[-1])] + [
                 point(start + step, value) for step, value in enumerate(result.upper, 1)
@@ -246,20 +272,38 @@ class PriceChart(QWidget):
             painter.drawPolyline(QPolygonF([
                 point(start + i, value) for i, value in enumerate([history[-1], *result.forecast])
             ]))
-        if show_forecast and self.llama_forecast:
-            color = QColor("#fbbf65" if QColor(surface).lightness() < 128 else "#9a4900")
-            painter.setPen(QPen(color, 2, Qt.PenStyle.DashDotLine))
+        if show_forecast and self.llama_band_visible():
+            bounds = [self.llama_bounds(step) for step in range(len(self.llama_forecast))]
+            border = QColor(llama_color)
+            border.setAlpha(180)
+            painter.setPen(QPen(border, 1.5, Qt.PenStyle.DotLine))
+            for values in zip(*bounds):
+                painter.drawPolyline(QPolygonF([
+                    point(start + i, value) for i, value in enumerate([history[-1], *values])
+                ]))
+        if show_forecast and self.llama_visible():
+            painter.setPen(QPen(llama_color, 2, Qt.PenStyle.DashDotLine))
             painter.drawPolyline(QPolygonF([
                 point(start + i, value) for i, value in enumerate([history[-1], *self.llama_forecast])
             ]))
         for index, radius in ((self.hover_index, 2), (self.selected_index, 4)):
             if index is not None:
-                price = history[index] if index < len(history) else result.forecast[index - len(history)]
-                location = point(index, price)
+                x = point(index, lower).x()
                 painter.setPen(QPen(QColor(text), 1, Qt.PenStyle.DotLine))
-                painter.drawLine(QPointF(location.x(), chart.top()), QPointF(location.x(), chart.bottom()))
-                painter.setBrush(QColor(actual_color if index < len(history) else forecast_color))
-                painter.drawEllipse(location, radius, radius)
+                painter.drawLine(QPointF(x, chart.top()), QPointF(x, chart.bottom()))
+                if index < len(history):
+                    markers = [(history[index], QColor(actual_color))]
+                else:
+                    step = index - len(history)
+                    markers = []
+                    if self.layers["forecast"] or self.layers["interval"]:
+                        markers.append((result.forecast[step], QColor(forecast_color)))
+                    if self.llama_visible():
+                        markers.append((self.llama_forecast[step], llama_color))
+                for price, color in markers:
+                    painter.setPen(color)
+                    painter.setBrush(color)
+                    painter.drawEllipse(point(index, price), radius, radius)
         painter.restore()
         painter.setPen(QColor(text))
         days = self.visible_days()
@@ -267,7 +311,13 @@ class PriceChart(QWidget):
         painter.drawText(QPointF(chart.left(), baseline), str(days[0]))
         end_label = str(days[-1])
         end_x = point(start, lower).x()
-        end_x = min(chart.right() - font.horizontalAdvance(end_label), end_x)
+        if show_forecast:
+            horizon_label = f"+{len(result.forecast)}"
+            horizon_x = chart.right() - font.horizontalAdvance(horizon_label)
+            painter.drawText(QPointF(horizon_x, baseline), horizon_label)
+            end_x = min(horizon_x - font.horizontalAdvance(end_label) - 12, end_x)
+        else:
+            end_x = min(chart.right() - font.horizontalAdvance(end_label), end_x)
         if end_x > chart.left() + font.horizontalAdvance(str(days[0])) + 16:
             painter.drawText(QPointF(end_x, baseline), end_label)
         painter.end()

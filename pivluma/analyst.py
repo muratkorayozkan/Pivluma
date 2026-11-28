@@ -1,12 +1,54 @@
 """Explain the active analysis using locally computed values."""
 
 import re
-from statistics import mean
+from statistics import mean, pstdev
 from typing import Sequence
 
 from pivluma.data import Price
 from pivluma.forecast import Analysis, NEWS_MODEL, TRAINING_WINDOW
 from pivluma.localization import translate
+
+
+def price_statistics(prices):
+    closes = [price.close for price in prices]
+    returns = [(current / previous - 1) * 100 for previous, current in zip(closes, closes[1:])]
+    peak, drawdown = closes[0], 0.
+    for close in closes:
+        peak = max(peak, close)
+        drawdown = max(drawdown, (1 - close / peak) * 100)
+    rsi = None
+    if len(closes) >= 15:
+        moves = [current - previous for previous, current in zip(closes[-15:-1], closes[-14:])]
+        gains = sum(max(0., move) for move in moves)
+        losses = sum(max(0., -move) for move in moves)
+        rsi = 100 * gains / (gains + losses) if gains or losses else 50.
+    low = min(prices, key=lambda price: price.close)
+    high = max(prices, key=lambda price: price.close)
+    return {
+        "volatility_percent_per_observation": pstdev(returns) if returns else 0.,
+        "max_drawdown_percent": drawdown,
+        "low_close": low.close, "low_date": str(low.day),
+        "high_close": high.close, "high_date": str(high.day),
+        "rsi_14_simple": rsi,
+    }
+
+
+def answer_statistics(question, context, prices, language):
+    words = set(re.findall(r"[^\W\d_]+", question.casefold()))
+    query = question.casefold()
+    if words & {"volatility", "volatilite", "oynaklık", "oynaklığı"} or "波动率" in query:
+        template = "Close-to-close volatility is {volatility_percent_per_observation:.2f}% per observation."
+    elif words & {"drawdown", "gerileme", "gerilemesi"} or "maksimum düşüş" in query or "最大回撤" in query:
+        template = "Maximum peak-to-trough drawdown was {max_drawdown_percent:.2f}%."
+    elif (words & {"highest", "lowest", "zirve", "dip"} or "en yüksek" in query
+          or "en düşük" in query or "最高" in query or "最低" in query):
+        template = "Lowest close: {low_close:.8g} ({low_date}). Highest close: {high_close:.8g} ({high_date})."
+    elif "rsi" in query or "相对强弱" in query or "göreceli güç" in query:
+        template = ("RSI needs at least 15 closing prices." if len(prices) < 15 else
+                    "The 14-observation RSI (simple averages) is {rsi_14_simple:.1f} out of 100.")
+    else:
+        return None
+    return f"{context}\n" + translate(language, template).format(**price_statistics(prices))
 
 
 def answer(question: str, label: str, prices: Sequence[Price], result: Analysis, language: str = "en") -> str:
@@ -17,6 +59,8 @@ def answer(question: str, label: str, prices: Sequence[Price], result: Analysis,
     turkish = language == "tr"
     period = "–" if turkish else "to"
     context = f"{label} | {first.day} {period} {latest.day}"
+    if detail := answer_statistics(question, context, prices, language):
+        return detail
     model = translate(language, result.model)
     if words & {"news", "headlines", "sentiment", "haber", "haberler", "duygu"}:
         if turkish:
@@ -91,14 +135,16 @@ def answer(question: str, label: str, prices: Sequence[Price], result: Analysis,
         )
 
     if turkish:
-        return "Fiyat hareketi, tahmin veya hareketli ortalama veya geçmiş test performansı hakkında soru sorabilirsiniz."
-    return "Ask about one of the supported topics: price movement, forecast, moving average, or backtest performance."
+        return "Fiyat hareketi, tahmin, oynaklık, azami gerileme, en yüksek ve düşük kapanışlar, RSI, hareketli ortalama veya geçmiş test hakkında soru sorabilirsiniz."
+    return "Ask about one of the supported topics: price movement, forecast, volatility, drawdown, closing extremes, RSI, moving average, or backtest performance."
 
 
 
 def answer_chinese(question, label, prices, result):
     first, latest = prices[0], prices[-1]
     period = f"{label} | {first.day} 至 {latest.day}"
+    if detail := answer_statistics(question, period, prices, "zh"):
+        return detail
     question = question.casefold()
     if any(term in question for term in ("新闻", "情绪", "研究", "news")):
         mode = "研究信号模型" if result.model == NEWS_MODEL else "价格模型"
@@ -119,4 +165,4 @@ def answer_chinese(question, label, prices, result):
         move = (latest.close / first.close - 1) * 100
         return (f"{period}\n{len(prices)} 个观察值中，收盘价从 {first.close:.2f} "
                 f"变为 {latest.close:.2f}（{move:+.2f}%）。")
-    return "可以询问价格变动、预测、移动平均、回测或研究信号。"
+    return "可以询问价格变动、预测、波动率、最大回撤、最高和最低收盘价、RSI、移动平均、回测或研究信号。"

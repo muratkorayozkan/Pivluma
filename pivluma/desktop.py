@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from pivluma import __version__
-from pivluma.analyst import answer
+from pivluma.analyst import answer, price_statistics
 from pivluma.appearance import THEMES, animations_enabled, colors_for, stylesheet
 from pivluma.chart import PriceChart
 from pivluma.data import PriceStore, read_prices, sample_prices
@@ -220,12 +220,19 @@ class Dashboard(QMainWindow):
         )
         layers = QHBoxLayout()
         for key, title in (("close", "Close"), ("average", "SMA 20"),
-                           ("forecast", "Forecast"), ("interval", "Interval")):
+                           ("forecast", "Forecast"), ("interval", "Interval"), ("llama", "llama.cpp"),
+                           ("llama_band", "llama band")):
             control = QCheckBox()
             self.localize(control.setText, title)
             control.setChecked(self.chart.layers[key])
             control.toggled.connect(lambda enabled, key=key: self.chart.set_layer(key, enabled))
             layers.addWidget(control)
+            if key == "llama":
+                self.llama_layer = control
+                self.llama_layer.hide()
+            elif key == "llama_band":
+                self.llama_band_layer = control
+                self.llama_band_layer.hide()
         layers.addStretch()
         chart_layout.addLayout(layers)
         chart_layout.addWidget(self.chart, 1)
@@ -261,6 +268,8 @@ class Dashboard(QMainWindow):
             ("Backtest", "How accurate was the model?"),
             ("Visible period", "Summarize the visible period"),
             ("Selected point", "Explain the selected point"),
+            ("Volatility", "What is the volatility?"),
+            ("Max drawdown", "What was the maximum drawdown?"),
         )):
             topic = self.localized_button(label)
             topic.clicked.connect(lambda checked=False, prompt=question: self.ask_topic(prompt))
@@ -856,6 +865,7 @@ class Dashboard(QMainWindow):
         if self.analyst_model == "cloud":
             self.local_model.start_cloud(self.cloud_url, self.cloud_code, self.language, question[:2000], facts)
         else:
+            facts["price_statistics"] = price_statistics(self.prices)
             self.local_model.start(self.analyst_model, self.language, question[:2000], facts)
 
     def show_model_answer(self, model, response):
@@ -916,6 +926,8 @@ class Dashboard(QMainWindow):
     def update_llama_status(self):
         installed = ready(self.local_model.root)
         self.llama_button.setVisible(installed)
+        self.llama_layer.setVisible(bool(self.chart.llama_forecast))
+        self.llama_band_layer.setVisible(bool(self.chart.llama_forecast))
         self.llama_button.setEnabled(bool(self.prices) and not self.llama_pending)
         self.llama_status.setVisible(bool(self.llama_message))
         source = self.text(self.llama_source or "Price history only")
@@ -946,7 +958,7 @@ class Dashboard(QMainWindow):
         except (OverflowError, ValueError):
             self.llama_message = "llama.cpp forecast unavailable."
         else:
-            self.llama_message = "Dash-dot line · llama.cpp forecast · {source}. Error and interval belong to the statistical forecast."
+            self.llama_message = "Dash-dot line · llama.cpp forecast · {source}. Dotted limits reuse the statistical error widths."
             self.chart.update()
             self.show_chart_point(self.chart.selected_index)
         self.update_llama_status()

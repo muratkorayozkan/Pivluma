@@ -2,6 +2,7 @@
 import json
 from datetime import timedelta
 from math import isfinite
+from statistics import median, pstdev
 
 FORECAST_TASK = "llama-forecast"
 
@@ -15,12 +16,17 @@ def forecast_input(prices, horizon, scores, source):
     recent = prices[-42:]
     news = sorted((day, score) for day, score in scores.items()
                   if latest.day - timedelta(days=30) <= day < latest.day)[-14:]
+    returns = [(right.close / left.close - 1) * 100 for left, right in zip(recent, recent[1:])]
     return {
         "last_close": latest.close,
         "as_of": str(latest.day),
-        "recent_returns_percent": [
-            round((right.close / left.close - 1) * 100, 4) for left, right in zip(recent, recent[1:])
-        ],
+        "price_context_percent": {
+            "last_5_observations": round((latest.close / recent[-6].close - 1) * 100, 4),
+            "full_recent_window": round((latest.close / recent[0].close - 1) * 100, 4),
+            "median_daily_return": round(median(returns), 4),
+            "daily_volatility": round(pstdev(returns), 4),
+        },
+        "recent_returns_percent": [round(value, 4) for value in returns],
         "requested_steps": anchor_steps(horizon),
         "research_source": source if news else "",
         "research_scores": [{"day": str(day), "score": round(score * 100, 2)} for day, score in news],
@@ -38,7 +44,7 @@ def forecast_request(facts):
         }}},
         "messages": [
             {"role": "system", "content": (
-                "Predict cumulative relative percentage returns. Use historical returns as the main evidence. "
+                "Predict cumulative relative percentage returns. Use historical returns as the main evidence. Compare the five-observation move, median return, and volatility before extrapolating. "
                 "Use the direction of recent research scores as weak supporting evidence. "
                 "Estimate a return for every requested step in order. Step numbers are time indices, "
                 "never copy them into the result. For example a weak downward forecast might be "

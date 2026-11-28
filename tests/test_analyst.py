@@ -1,7 +1,8 @@
 import unittest
+from datetime import date, timedelta
 
-from pivluma.analyst import answer
-from pivluma.data import sample_prices
+from pivluma.analyst import answer, price_statistics
+from pivluma.data import Price, sample_prices
 from pivluma.forecast import analyze
 
 
@@ -38,6 +39,18 @@ class AnalystTests(unittest.TestCase):
         self.assertIn("Synthetic sample", reply)
         self.assertIn(str(self.prices[0].day), reply)
         self.assertIn(str(self.prices[-1].day), reply)
+
+    def test_built_in_statistics_are_localized_and_based_on_closes(self):
+        start = date(2025, 1, 1)
+        closes = [80., 100., 75., 90.] + [90.] * 11
+        prices = [Price(start + timedelta(days=day), value) for day, value in enumerate(closes)]
+        stats = price_statistics(prices)
+        self.assertAlmostEqual(stats["max_drawdown_percent"], 25)
+        self.assertAlmostEqual(stats["rsi_14_simple"], 100 * 35 / 60)
+        self.assertIn("25.00%", answer("What was the maximum drawdown?", "DEMO", prices, self.result))
+        self.assertIn("最高收盘价为 100", answer("最高收盘价", "DEMO", prices, self.result, "zh"))
+        self.assertIn("58.3", answer("RSI nedir?", "DEMO", prices, self.result, "tr"))
+        self.assertIn("oynaklık", answer("Oynaklık nedir?", "DEMO", prices, self.result, "tr"))
 
     def test_unsupported_questions_get_supported_topics(self):
         self.assertIn("supported topics", self.ask("Who runs this company?"))

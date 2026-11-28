@@ -2,8 +2,8 @@
 
 from collections import deque
 from dataclasses import dataclass
-from math import isfinite
-from statistics import linear_regression, mean
+from math import exp, isfinite, log
+from statistics import linear_regression, mean, median
 from typing import Sequence
 
 
@@ -26,7 +26,7 @@ MIN_TRAINING = 8
 SCORE_WINDOW = 32
 NEWS_MODEL = "Research-adjusted baseline"
 MIN_NEWS_PAIRS = 20
-MODEL_NAMES = ("Last-price baseline", "Linear trend", "Damped trend", "Smoothed level")
+MODEL_NAMES = ("Last-price baseline", "Linear trend", "Damped trend", "Smoothed level", "Robust return trend")
 
 
 def _paths(prices: Sequence[float], horizon: int):
@@ -37,11 +37,20 @@ def _paths(prices: Sequence[float], horizon: int):
         level += .3 * (price - level)
     recent = [right - left for left, right in zip(prices[-8:], prices[-7:])]
     drift = mean(recent)
+    logs = [log(price) for price in prices]
+    # Median returns reduce the influence of isolated price jumps.
+    returns = [right - left for left, right in zip(logs, logs[1:])]
+    log_drift = median(returns)
+    deviation = median(abs(value - log_drift) for value in returns)
+    if deviation > abs(log_drift) / 2:
+        log_drift = 0.
+    log_drift = max(-.10, min(.10, log_drift))
     return (
         (latest,) * horizon,
         tuple(max(0., intercept + slope * (len(prices) + step)) for step in range(horizon)),
         tuple(max(0., latest + drift * (1 - .88 ** step) / .12) for step in range(1, horizon + 1)),
         (level,) * horizon,
+        tuple(latest * exp(log_drift * step) for step in range(1, horizon + 1)),
     )
 
 
@@ -108,7 +117,9 @@ def analyze(prices: Sequence[float], horizon: int, news: Sequence[float | None] 
         available = len(names)
         if news is not None and (news[origin - 1] is None or len(news_pairs) < MIN_NEWS_PAIRS):
             available -= 1
-        selected = min(range(available), key=score)
+        eligible = (index for index in range(available)
+                    if names[index] != "Robust return trend" or paths[index] != paths[0])
+        selected = min(eligible, key=score)
         if origin <= final_origin - horizon:
             actual = prices[origin:origin + horizon]
             for step, (prediction, observed) in enumerate(zip(paths[selected], actual)):

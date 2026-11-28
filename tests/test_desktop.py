@@ -73,6 +73,25 @@ class DashboardTests(unittest.TestCase):
             window.close()
             delete(window)
 
+    def test_chart_llama_band_can_be_inspected_and_hidden_independently(self):
+        window = Dashboard(Path("unused.sqlite"))
+        try:
+            chart = window.chart
+            chart.llama_forecast = tuple(value + 20 for value in chart.result.forecast)
+            step = len(chart.visible_history())
+            lower, upper = chart.llama_bounds(0)
+            self.assertLessEqual(lower, chart.llama_forecast[0])
+            self.assertGreaterEqual(upper, chart.llama_forecast[0])
+            self.assertIn("llama.cpp scenario band", chart.point_text(step))
+            chart.set_layer("llama_band", False)
+            self.assertNotIn("llama.cpp scenario band", chart.point_text(step))
+            self.assertIn("llama.cpp forecast", chart.point_text(step))
+            chart.set_layer("llama", False)
+            self.assertNotIn("llama.cpp forecast", chart.point_text(step))
+        finally:
+            window.close()
+            delete(window)
+
     def test_sample_draws_and_horizon_refreshes(self):
         window = Dashboard(Path("unused.sqlite3"))
         try:
