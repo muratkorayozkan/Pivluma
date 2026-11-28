@@ -57,7 +57,9 @@ class ForecastStore:
         with self.connection:
             for row_id, origin, predicted, observed in rows:
                 existing = dict(json.loads(observed))
-                if not series or series[0][0] > origin and not existing:
+                if not series:
+                    continue
+                if series[0][0] > origin and not any(day in existing for day, _ in series):
                     continue
                 limit = len(json.loads(predicted))
                 existing.update((day, value) for day, value in series if day > origin)

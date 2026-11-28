@@ -167,6 +167,28 @@ class DashboardTests(unittest.TestCase):
                 window.close()
                 delete(window)
 
+    def test_short_feed_history_preserves_saved_catalog_equity_closes(self):
+        with tempfile.TemporaryDirectory() as folder:
+            database = Path(folder) / "prices.sqlite"
+            with closing(sqlite3.connect(database)) as connection:
+                PriceStore(connection).replace("ABNB", sample_prices())
+            window = Dashboard(database)
+            try:
+                window.live_symbol = "ABNB"
+                window.clear_analysis("ABNB")
+                window.market.provider = "Twelve Data"
+                window.receive_history("ABNB", sample_prices()[-10:])
+                self.assertEqual(len(window.prices), 120)
+                self.assertEqual(window.series_source, "Saved equity closes")
+                self.assertTrue(window.provider_credit.isHidden())
+                window.receive_history("ABNB", sample_prices())
+                self.assertFalse(window.provider_credit.isHidden())
+                window.show_sample()
+                self.assertTrue(window.provider_credit.isHidden())
+            finally:
+                window.close()
+                delete(window)
+
     def test_sample_draws_and_horizon_refreshes(self):
         window = Dashboard(Path("unused.sqlite3"))
         try:

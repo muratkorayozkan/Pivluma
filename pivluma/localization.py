@@ -3,6 +3,7 @@
 from pivluma.chinese import CHINESE
 
 TURKISH = {
+    "Data provided by Twelve Data": "Veri sağlayıcı: Twelve Data",
     "Open developer profile on Instagram": "Geliştiricinin Instagram profilini aç",
     "Developer": "Geliştirici",
     "Open developer profile on GitHub": "Geliştiricinin GitHub profilini aç",

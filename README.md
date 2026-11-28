@@ -2,17 +2,17 @@
 
 Pivluma is a Windows desktop application in development for financial forecasting and market analysis.
 
-![Pivluma 0.20.0 showing the wordmark, category filter, Forecast Lab button, and sample price chart](docs/images/pivluma-dashboard.png)
+![Pivluma 0.20.1 showing the wordmark, category filter, Forecast Lab button, and sample price chart](docs/images/pivluma-dashboard.png)
 
-## Download Pivluma 0.20.0
+## Download Pivluma 0.20.1
 
 | Windows x64 package | How to use it |
 | --- | --- |
-| [Setup EXE](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.20.0/Pivluma-0.20.0-Windows-Setup.exe) | Installs to `C:\Program Files\Pivluma` and adds a Start menu entry. The desktop shortcut is selected by default. The local model download is optional. Windows requests administrator approval for installation. |
-| [Portable ZIP](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.20.0/Pivluma-0.20.0-Windows.zip) | Extract the entire archive and run `Pivluma.exe`. Keep the neighboring `_internal` folder. |
-| [Standalone MSI](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.20.0/Pivluma-0.20.0-Windows-Setup.msi) | Install with Windows Installer. To add the local model, use Pivluma Settings after setup. |
+| [Setup EXE](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.20.1/Pivluma-0.20.1-Windows-Setup.exe) | Installs to `C:\Program Files\Pivluma` and adds a Start menu entry. The desktop shortcut is selected by default. The local model download is optional. Windows requests administrator approval for installation. |
+| [Portable ZIP](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.20.1/Pivluma-0.20.1-Windows.zip) | Extract the entire archive and run `Pivluma.exe`. Keep the neighboring `_internal` folder. |
+| [Standalone MSI](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.20.1/Pivluma-0.20.1-Windows-Setup.msi) | Install with Windows Installer. To add the local model, use Pivluma Settings after setup. |
 
-The app opens on BTC/USD. Use the symbol picker to switch instruments or choose **Sample data** to explore offline. The dashboard and built-in analyst support English, Turkish, and Simplified Chinese. [Release notes](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.20.0)
+The app opens on BTC/USD. Use the symbol picker to switch instruments or choose **Sample data** to explore offline. The dashboard and built-in analyst support English, Turkish, and Simplified Chinese. [Release notes](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.20.1)
 
 ## How to read the chart
 
@@ -70,9 +70,9 @@ python -m venv .venv
 .\scripts\build-windows.ps1 -Python .\.venv\Scripts\python.exe
 ```
 
-The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.20.0-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
+The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.20.1-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
 
-To build the themed Setup EXE and standalone MSI after building the portable package, run `./scripts/build-setup.ps1 -WixBin PATH_TO_WIX_BINARIES` with the WiX 3.14.1 binaries. This creates `dist/Pivluma-0.20.0-Windows-Setup.exe` and `dist/Pivluma-0.20.0-Windows-Setup.msi`.
+To build the themed Setup EXE and standalone MSI after building the portable package, run `./scripts/build-setup.ps1 -WixBin PATH_TO_WIX_BINARIES` with the WiX 3.14.1 binaries. This creates `dist/Pivluma-0.20.1-Windows-Setup.exe` and `dist/Pivluma-0.20.1-Windows-Setup.msi`.
 
 ## Connect live market data
 
@@ -82,7 +82,7 @@ Use the category selector to filter cryptocurrency, foreign exchange, stocks, an
 
 [Equity provider comparison and rollout requirements](docs/equity-feed.md)
 
-For installations managed by a data provider or administrator, an optional `TWELVE_DATA_API_KEY` in the process environment enables supported equity, ETF and FX data under the provider account's display rights. The public installer requires no key. You can also import equity and ETF history from CSV. If the stock feed is unavailable, reselecting a listed symbol such as NFLX or META opens its saved closes when sufficient history exists.
+For installations managed by a data provider or administrator, an optional `TWELVE_DATA_API_KEY` in the process environment enables supported equity, ETF and FX data under the provider account's display rights. The public installer requires no key. The app displays the Twelve Data attribution beside market data when it displays that provider's prices. You can also import equity and ETF history from CSV. If the stock feed is unavailable, reselecting a listed symbol such as NFLX or META opens its saved closes when sufficient history exists.
 
 The chart uses daily REST history. If daily history is unavailable, Pivluma still tries the quote subscription and displays the history error separately from the stream state. The WebSocket quote is displayed separately in the Windows local time zone, with its UTC offset and marked as the last received quote after two minutes. Disconnecting keeps the latest quote visible and labels it as the last received quote. Switching to a sample or CSV series closes the live connection and clears the quote. The WebSocket connection and subscription acknowledgement have a combined 15-second deadline. If the provider rejects the subscription or the deadline expires, Twelve Data falls back to a REST quote when available. The app polls once per minute and labels the result as a one-minute bar. For other providers, reselect the symbol to retry. Once the subscription is accepted, the app can wait for a quote while the market is quiet. Sample data and CSV analysis work offline.
 

@@ -36,3 +36,13 @@ class ForecastLabTests(unittest.TestCase):
         store.reconcile("DEMO", [Price(origin + timedelta(days=3), 102),
                                  Price(origin + timedelta(days=4), 108)])
         self.assertEqual(store.runs("DEMO")[0][3][-1], ["2026-01-06", 108])
+
+    def test_journal_does_not_fill_steps_across_disconnected_history(self):
+        connection = sqlite3.connect(":memory:")
+        self.addCleanup(connection.close)
+        store = ForecastStore(connection)
+        origin = date(2026, 1, 2)
+        store.save("S", origin, "llama.cpp", (101, 102))
+        store.reconcile("S", [Price(origin, 100), Price(origin + timedelta(days=1), 101)])
+        store.reconcile("S", [Price(origin + timedelta(days=20), 120), Price(origin + timedelta(days=21), 121)])
+        self.assertEqual(store.runs("S")[0][3], [["2026-01-03", 101]])

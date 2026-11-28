@@ -8,8 +8,8 @@ from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, QSettings, QStandardPaths, QStringListModel, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QIcon, QKeySequence, QShortcut
+from PySide6.QtCore import QProcess, QSettings, QStandardPaths, QStringListModel, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QCompleter, QFileDialog, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu,
     QProgressBar, QPushButton, QScrollArea, QSpinBox, QStyle, QSplitter, QStackedWidget, QTabWidget, QVBoxLayout, QWidget,
@@ -361,6 +361,10 @@ class Dashboard(QMainWindow):
         self.quote_label.setWordWrap(True)
         self.quote_label.setObjectName("quote")
         market_section.addWidget(self.quote_label)
+        self.provider_credit = self.localized_button("Data provided by Twelve Data")
+        self.provider_credit.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://twelvedata.com/")))
+        self.provider_credit.hide()
+        market_section.addWidget(self.provider_credit, alignment=Qt.AlignmentFlag.AlignLeft)
         self.history_warning = QLabel()
         self.history_warning.setWordWrap(True)
         self.history_warning.hide()
@@ -386,6 +390,7 @@ class Dashboard(QMainWindow):
         self.last_quote = None
         self.stream_lost = True
         self.live_symbol = ""
+        self.series_source = ""
         self.market = MarketFeed(self)
         self.market.history.connect(self.receive_history)
         self.market.history_warning.connect(self.receive_market_warning)
@@ -716,6 +721,7 @@ class Dashboard(QMainWindow):
         self.cancel_model_request()
         self.reset_news()
         self.series_source = ""
+        self.update_provider_credit()
         self.series_symbol = symbol
         self.prices = []
         self.chart.history = []
@@ -763,7 +769,7 @@ class Dashboard(QMainWindow):
             self.status.setText(str(error))
 
     def load_equity_history(self, symbol):
-        if symbol not in OTHER_SYMBOLS or not self.database.is_file():
+        if not symbol or symbol in PUBLIC_SYMBOLS or symbol in FX_SYMBOLS or not self.database.is_file():
             return False
         try:
             with closing(sqlite3.connect(self.database)) as connection:
@@ -863,7 +869,7 @@ class Dashboard(QMainWindow):
         if symbol != self.live_symbol:
             return
         if len(prices) <= TRAINING_WINDOW + 9:
-            self.status.setText(self.text("Too few daily observations for a forecast."))
+            self.receive_market_warning("Too few daily observations for a forecast.")
             return
         source = ("ECB daily reference rates" if self.market.provider == "ECB"
                   else self.market.with_provider("Twelve Data daily history"))
@@ -876,7 +882,13 @@ class Dashboard(QMainWindow):
             self.last_quote = price, timestamp
             self.update_quote()
 
+    def update_provider_credit(self):
+        historical = self.series_source == "Twelve Data daily history"
+        streaming = self.last_quote is not None and self.market.provider == "Twelve Data"
+        self.provider_credit.setVisible(historical or streaming)
+
     def update_quote(self):
+        self.update_provider_credit()
         if self.last_quote is None:
             self.quote_label.clear()
             self.quote_label.hide()
@@ -950,6 +962,7 @@ class Dashboard(QMainWindow):
     def set_series(self, label, prices, symbol=""):
         self.reset_news()
         self.series_source = label
+        self.update_provider_credit()
         self.series_symbol = symbol
         if symbol and (symbol == self.chart.comparison_symbol or symbol == self.pending_comparison):
             self.clear_comparison()

@@ -1,6 +1,7 @@
 """Simplified Chinese desktop translations."""
 
 CHINESE = {
+    "Data provided by Twelve Data": "数据由 Twelve Data 提供",
     "Open developer profile on Instagram": "打开开发者的 Instagram 个人资料",
     "Developer": "开发者",
     "Open developer profile on GitHub": "打开开发者的 GitHub 个人资料",

@@ -171,6 +171,8 @@ class MarketFeed(QObject):
         url.setQuery(query)
         request = QNetworkRequest(url)
         if key is not None:
+            request.setAttribute(QNetworkRequest.Attribute.RedirectPolicyAttribute,
+                                 QNetworkRequest.RedirectPolicy.SameOriginRedirectPolicy)
             request.setRawHeader(b"Authorization", f"apikey {key}".encode("ascii"))
         request.setTransferTimeout(15000)
         reply = self.network.get(request)
@@ -294,6 +296,8 @@ class MarketFeed(QObject):
         query.addQueryItem("interval", "1min")
         url.setQuery(query)
         request = QNetworkRequest(url)
+        request.setAttribute(QNetworkRequest.Attribute.RedirectPolicyAttribute,
+                             QNetworkRequest.RedirectPolicy.SameOriginRedirectPolicy)
         request.setRawHeader(b"Authorization", f"apikey {key}".encode("ascii"))
         request.setTransferTimeout(12000)
         reply = self.network.get(request)
