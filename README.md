@@ -2,15 +2,27 @@
 
 Pivluma is a Windows desktop application in development for financial forecasting and market analysis.
 
-![Pivluma on Windows showing the forecast chart and local analyst side by side](docs/images/pivluma-dashboard.png)
+![Pivluma 0.17.1 showing statistical and llama.cpp projections from sample data, with the analyst alongside](docs/images/pivluma-dashboard.png)
 
-## Current release
+## Download Pivluma 0.17.1
 
-[Pivluma 0.17.1](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.17.1) is the current release. Download the [portable Windows x64 ZIP](https://github.com/muratkorayozkan/Pivluma/releases/latest), extract it, and run Pivluma.exe. The themed Windows Setup EXE is available on the same release page, alongside the standalone MSI. Setup starts with the Windows light or dark preference and offers a theme switch. It installs to `C:\Program Files\Pivluma` with a Start menu entry. Its desktop shortcut option is selected by default and can be cleared during setup. Windows requests administrator approval for the MSI.
+| Windows x64 package | How to use it |
+| --- | --- |
+| [Setup EXE](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.17.1/Pivluma-0.17.1-Windows-Setup.exe) | Installs to `C:\Program Files\Pivluma` and adds a Start menu entry. The desktop shortcut is selected by default. The local model download is optional. Windows requests administrator approval for installation. |
+| [Portable ZIP](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.17.1/Pivluma-0.17.1-Windows.zip) | Extract the entire archive and run `Pivluma.exe`. Keep the neighboring `_internal` folder. |
+| [Standalone MSI](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.17.1/Pivluma-0.17.1-Windows-Setup.msi) | Install with Windows Installer. To add the local model, use Pivluma Settings after setup. |
 
-The forecasting engine compares a last-price baseline, linear trend, damped trend, and exponentially smoothed level. At each origin it uses only completed prior forecasts to select a model, using recent errors at several lead times. The dashboard reports the selected model and compares the full selection strategy against the last-price baseline on the same walk-forward origins. Forecast intervals use empirical errors for each step.
+The app opens on BTC/USD. Use the symbol picker to switch instruments or choose **Sample data** to explore offline. The dashboard and built-in analyst support English, Turkish, and Simplified Chinese. [Release notes](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.17.1)
 
-The desktop dashboard and built-in analyst support English, Turkish, and Simplified Chinese. Kraken public crypto data and ECB daily reference rates work without account setup. A configured Twelve Data feed can extend coverage. A portable Windows package can be built from source. Live verification with a Twelve Data account is pending.
+## How to read the chart
+
+| Chart element | Meaning |
+| --- | --- |
+| Solid line | Observed closing prices. |
+| Dashed line and shaded interval | Statistical forecast and empirical interval. The model selector compares the last-price baseline, linear trend, damped trend, and smoothed level in walk-forward tests. The reported errors and XLSX export apply to this forecast. |
+| Dash-dot line | Optional llama.cpp projection. It uses recent price returns and passes available research scores to the model. Pivluma also applies a small, fading adjustment from those scores. The projection has no separate backtest or uncertainty interval. |
+
+The screenshot uses synthetic prices and sample research scores. [Research inputs and source labels](#use-news-in-a-forecast)
 
 ## Run the desktop app
 
@@ -23,7 +35,6 @@ python -m venv .venv
 ```
 
 The application starts maximized with standard Windows caption buttons and connects to BTC/USD. Press **Esc** to restore the window size or **F11** to toggle maximization. Choose **Sample data** to work with a synthetic series. The chart shows recent closing prices, the forecast, its empirical interval, and walk-forward error against a last-price baseline. Change **Forecast steps** to update the analysis. The maximum is 120 steps when there are enough observations for walk-forward evaluation. Choose **Export forecast XLSX** to save an Excel workbook with the active symbol, last observation date, selected model, error metrics, forecasts, and interval bounds. To use your own data, enter a symbol and choose **Import CSV**. **Load saved** lists the symbols stored in the Windows application data directory. Select one to reopen its series from SQLite. The command-line database can be selected independently with `--database`.
-
 
 Use the **Language** menu to switch between **EN · English**, **TR · Türkçe**, and **简体中文**. The selected language is remembered on this PC. Switching keeps the active prices and forecast horizon.
 
@@ -39,7 +50,7 @@ The dashboard scrolls vertically when the controls, chart, and analyst response 
 
 ## Automatic updates on Windows
 
-Install version 0.5.0 or newer once from the Windows ZIP on GitHub Releases. The portable executable checks for the latest stable release in the background. If a newer Windows ZIP is available, Pivluma verifies the GitHub asset's SHA-256 digest and size before preparing the package under the Windows application data directory.
+The packaged Windows app checks for the latest stable release in the background. You can also check from the upper toolbar or **About**. If a newer Windows ZIP is available, Pivluma verifies the GitHub asset's SHA-256 digest and size before preparing the package under the Windows application data directory.
 
 Transient GitHub lookup failures are retried once. An icon beside **Check for updates** shows the current status. Hover over it for details. The update status distinguishes network, certificate, rate limit, local storage, and package verification problems.
 
@@ -59,6 +70,7 @@ python -m venv .venv
 
 The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.17.1-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
 
+To build the themed Setup EXE and standalone MSI after building the portable package, run `./scripts/build-setup.ps1 -WixBin PATH_TO_WIX_BINARIES` with the WiX 3.14.1 binaries. This creates `dist/Pivluma-0.17.1-Windows-Setup.exe` and `dist/Pivluma-0.17.1-Windows-Setup.msi`.
 
 ## Connect live market data
 
@@ -71,9 +83,6 @@ For installations managed by a data provider or administrator, an optional `TWEL
 The chart uses daily REST history. If daily history is unavailable, Pivluma still tries the quote subscription and displays the history error separately from the stream state. The WebSocket quote is displayed separately in the Windows local time zone, with its UTC offset and marked as the last received quote after two minutes. Disconnecting keeps the latest quote visible and labels it as the last received quote. Switching to a sample or CSV series closes the live connection and clears the quote. The WebSocket connection and subscription acknowledgement have a combined 15-second deadline. If the provider rejects the subscription or the deadline expires, Twelve Data falls back to a REST quote when available. The app polls once per minute and labels the result as a one-minute bar. For other providers, reselect the symbol to retry. Once the subscription is accepted, the app can wait for a quote while the market is quiet. Sample data and CSV analysis work offline.
 
 Provider references: [Kraken daily history](https://docs.kraken.com/api/docs/rest-api/get-ohlc-data), [Kraken ticker stream](https://docs.kraken.com/api/docs/websocket-v2/ticker), [REST API](https://twelvedata.com/docs), [WebSocket API](https://twelvedata.com/docs/websocket/websocket-getting-started), and [plans](https://twelvedata.com/pricing).
-
-
-To build the themed Setup EXE and standalone MSI after building the portable package, run `./scripts/build-setup.ps1 -WixBin PATH_TO_WIX_BINARIES` with the WiX 3.14.1 binaries. This creates `dist/Pivluma-0.17.1-Windows-Setup.exe` and `dist/Pivluma-0.17.1-Windows-Setup.msi`.
 
 ## Cloud analyst
 
@@ -97,7 +106,6 @@ A successful model download selects the local model. Existing installations with
 
 [llama.cpp release](https://github.com/ggml-org/llama.cpp/releases/tag/b12823) · [Qwen3 model](https://huggingface.co/ggml-org/Qwen3-1.7B-GGUF)
 
-
 ## Try offline analysis
 
 With Python 3.10 or newer, run these commands from the repository root:
@@ -112,7 +120,6 @@ The first command uses 120 synthetic closing prices. The import expects a UTF-8 
 
 A successful import replaces the stored series for that symbol in `pivluma.sqlite3`. Use `--database PATH` to choose another file. The output includes forecasts, empirical intervals and both walk-forward error scores.
 
-
 ## Run the tests
 
 From the repository root, with Python 3.10 or later:
@@ -125,4 +132,4 @@ The data and forecasting tests use the Python standard library. Run the same com
 
 ## Development
 
-Commit and push directly to `main`. Update this README when features, setup instructions, or project status change. For each release, update the application version, verify the tests and Windows build, then tag the verified commit on main as vMAJOR.MINOR.PATCH and publish GitHub release notes with the verified Windows x64 ZIP attached.
+Commit and push directly to `main`. Update this README when features, setup instructions, or project status change. For each release, update the application version, verify the tests and Windows build, then tag the verified commit on main as vMAJOR.MINOR.PATCH and publish GitHub release notes with the verified Windows x64 ZIP, Setup EXE, and MSI attached.
