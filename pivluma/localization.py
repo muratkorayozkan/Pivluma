@@ -3,6 +3,16 @@
 from pivluma.chinese import CHINESE
 
 TURKISH = {
+    "TradingView and local forecast": "TradingView ve yerel tahmin",
+    "{symbol} · TradingView and local forecast": "{symbol} · TradingView ve yerel tahmin",
+    "TradingView opens in your browser for viewing. llama.cpp uses authorized closing history loaded in Pivluma.": "TradingView grafiği tarayıcıda açılır. llama.cpp, Pivluma’ya yetkili bir kaynaktan yüklenen kapanış geçmişini kullanır.",
+    "Open TradingView chart": "TradingView grafiğini aç",
+    "Use saved closes for {symbol}": "{symbol} için kayıtlı kapanışları kullan",
+    "Import authorized CSV": "Yetkili CSV içe aktar",
+    "Forecast input: {source} · {count} closing prices.": "Tahmin girdisi: {source} · {count} kapanış fiyatı.",
+    "Load closing history for this symbol from an authorized source.": "Bu sembolün kapanış geçmişini yetkili bir kaynaktan yükleyin.",
+    "Download the local model from Settings to enable llama.cpp.": "llama.cpp için Ayarlar’dan yerel modeli indirin.",
+    "Select a valid symbol to open TradingView.": "TradingView’i açmak için geçerli bir sembol seçin.",
     "Data provided by Twelve Data": "Veri sağlayıcı: Twelve Data",
     "Open developer profile on Instagram": "Geliştiricinin Instagram profilini aç",
     "Developer": "Geliştirici",

@@ -23,7 +23,7 @@ except ModuleNotFoundError as error:
 
 from pivluma.data import Price, PriceStore, sample_prices
 from pivluma.desktop import Dashboard
-from pivluma.dialogs import about_dialog
+from pivluma.dialogs import about_dialog, tradingview_dialog
 from pivluma.single_instance import SingleInstance
 from pivluma.update_ui import UpdateController
 
@@ -185,6 +185,37 @@ class DashboardTests(unittest.TestCase):
                 self.assertFalse(window.provider_credit.isHidden())
                 window.show_sample()
                 self.assertTrue(window.provider_credit.isHidden())
+            finally:
+                window.close()
+                delete(window)
+
+    def test_tradingview_and_llama_require_a_matching_local_series(self):
+        with tempfile.TemporaryDirectory() as folder:
+            database = Path(folder) / "prices.sqlite"
+            with closing(sqlite3.connect(database)) as connection:
+                PriceStore(connection).replace("NFLX", sample_prices())
+            window = Dashboard(database)
+            window.symbol.setText("NFLX")
+            try:
+                def inspect(dialog):
+                    buttons = {button.text(): button for button in dialog.findChildren(QPushButton)}
+                    run = buttons["Run llama.cpp forecast"]
+                    self.assertFalse(run.isEnabled())
+                    buttons["Open TradingView chart"].click()
+                    browser.assert_called_once()
+                    self.assertIn("NASDAQ%3ANFLX", browser.call_args.args[0].toString())
+                    buttons["Use saved closes for NFLX"].click()
+                    self.assertTrue(run.isEnabled())
+                    self.assertEqual(window.series_symbol, "NFLX")
+                    run.click()
+                    forecast.assert_called_once()
+
+                with patch("pivluma.dialogs.ready", return_value=True), patch.object(
+                    QDialog, "exec", inspect
+                ), patch("pivluma.dialogs.QDesktopServices.openUrl") as browser, patch.object(
+                    window, "request_llama_forecast"
+                ) as forecast:
+                    tradingview_dialog(window)
             finally:
                 window.close()
                 delete(window)

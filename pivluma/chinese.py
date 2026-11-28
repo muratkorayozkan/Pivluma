@@ -1,6 +1,16 @@
 """Simplified Chinese desktop translations."""
 
 CHINESE = {
+    "TradingView and local forecast": "TradingView 与本地预测",
+    "{symbol} · TradingView and local forecast": "{symbol} · TradingView 与本地预测",
+    "TradingView opens in your browser for viewing. llama.cpp uses authorized closing history loaded in Pivluma.": "TradingView 图表将在浏览器中打开。llama.cpp 使用从授权来源加载到 Pivluma 的历史收盘价。",
+    "Open TradingView chart": "打开 TradingView 图表",
+    "Use saved closes for {symbol}": "使用 {symbol} 已保存的收盘价",
+    "Import authorized CSV": "导入授权 CSV",
+    "Forecast input: {source} · {count} closing prices.": "预测输入：{source} · {count} 个收盘价。",
+    "Load closing history for this symbol from an authorized source.": "请从授权来源加载此品种的历史收盘价。",
+    "Download the local model from Settings to enable llama.cpp.": "请在设置中下载本地模型以启用 llama.cpp。",
+    "Select a valid symbol to open TradingView.": "请选择有效品种以打开 TradingView。",
     "Data provided by Twelve Data": "数据由 Twelve Data 提供",
     "Open developer profile on Instagram": "打开开发者的 Instagram 个人资料",
     "Developer": "开发者",

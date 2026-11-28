@@ -19,6 +19,7 @@ from pivluma.appearance import THEMES
 from pivluma.local_assets import ready, supported
 from pivluma.local_model import LOCAL_MODEL
 from pivluma.model_download import DownloadDialog
+from pivluma.tradingview import tradingview_url
 from pivluma.updates import ROOT
 
 
@@ -252,6 +253,77 @@ def about_dialog(window):
         dialog.exec()
     finally:
         window.update_status_changed.disconnect(sync_update)
+        dialog.deleteLater()
+
+
+def tradingview_dialog(window):
+    symbol = window.symbol.text().strip().upper() or window.series_symbol
+    url = tradingview_url(symbol)
+    if not url:
+        window.status.setText(window.text("Select a valid symbol to open TradingView."))
+        return
+
+    dialog = _dialog(window, "TradingView and local forecast")
+    dialog.resize(460, 280)
+    layout = QVBoxLayout(dialog)
+    title = QLabel(window.text("{symbol} · TradingView and local forecast", symbol=symbol))
+    title.setProperty("sectionTitle", True)
+    layout.addWidget(title)
+    note = QLabel(window.text(
+        "TradingView opens in your browser for viewing. llama.cpp uses authorized closing history loaded in Pivluma."
+    ))
+    note.setWordWrap(True)
+    layout.addWidget(note)
+    chart = QPushButton(window.text("Open TradingView chart"))
+    chart.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(url)))
+    layout.addWidget(chart)
+    source = QLabel()
+    source.setTextFormat(Qt.TextFormat.PlainText)
+    source.setWordWrap(True)
+    layout.addWidget(source)
+    saved = QPushButton(window.text("Use saved closes for {symbol}", symbol=symbol))
+    imported = QPushButton(window.text("Import authorized CSV"))
+    run = QPushButton(window.text("Run llama.cpp forecast"))
+    layout.addWidget(saved)
+    layout.addWidget(imported)
+    layout.addWidget(run)
+
+    def update_actions():
+        matches = window.series_symbol.upper() == symbol and bool(window.prices)
+        if matches:
+            message = window.text("Forecast input: {source} · {count} closing prices.",
+                                  source=window.text(window.series_source), count=len(window.prices))
+        else:
+            message = window.text("Load closing history for this symbol from an authorized source.")
+        installed = ready(window.local_model.root)
+        if not installed:
+            message += " " + window.text("Download the local model from Settings to enable llama.cpp.")
+        source.setText(message)
+        run.setEnabled(matches and installed)
+
+    def load_or_import(action):
+        window.symbol.setText(symbol)
+        window.status.clear()
+        action()
+        update_actions()
+        if window.status.text():
+            source.setText(window.status.text())
+
+    saved.clicked.connect(lambda: load_or_import(lambda: window.load_saved_for_symbol(symbol)))
+    imported.clicked.connect(lambda: load_or_import(window.import_csv))
+
+    def start_forecast():
+        dialog.accept()
+        window.request_llama_forecast()
+
+    run.clicked.connect(start_forecast)
+    _buttons(dialog, layout, QDialogButtonBox.StandardButton.Close)
+    update_actions()
+    window.market.history.connect(update_actions)
+    try:
+        dialog.exec()
+    finally:
+        window.market.history.disconnect(update_actions)
         dialog.deleteLater()
 
 

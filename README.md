@@ -2,17 +2,17 @@
 
 Pivluma is a Windows desktop application in development for financial forecasting and market analysis.
 
-![Pivluma 0.20.1 showing the wordmark, category filter, Forecast Lab button, and sample price chart](docs/images/pivluma-dashboard.png)
+![Pivluma 0.20.2 showing the wordmark, category filter, Forecast Lab button, and sample price chart](docs/images/pivluma-dashboard.png)
 
-## Download Pivluma 0.20.1
+## Download Pivluma 0.20.2
 
 | Windows x64 package | How to use it |
 | --- | --- |
-| [Setup EXE](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.20.1/Pivluma-0.20.1-Windows-Setup.exe) | Installs to `C:\Program Files\Pivluma` and adds a Start menu entry. The desktop shortcut is selected by default. The local model download is optional. Windows requests administrator approval for installation. |
-| [Portable ZIP](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.20.1/Pivluma-0.20.1-Windows.zip) | Extract the entire archive and run `Pivluma.exe`. Keep the neighboring `_internal` folder. |
-| [Standalone MSI](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.20.1/Pivluma-0.20.1-Windows-Setup.msi) | Install with Windows Installer. To add the local model, use Pivluma Settings after setup. |
+| [Setup EXE](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.20.2/Pivluma-0.20.2-Windows-Setup.exe) | Installs to `C:\Program Files\Pivluma` and adds a Start menu entry. The desktop shortcut is selected by default. The local model download is optional. Windows requests administrator approval for installation. |
+| [Portable ZIP](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.20.2/Pivluma-0.20.2-Windows.zip) | Extract the entire archive and run `Pivluma.exe`. Keep the neighboring `_internal` folder. |
+| [Standalone MSI](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.20.2/Pivluma-0.20.2-Windows-Setup.msi) | Install with Windows Installer. To add the local model, use Pivluma Settings after setup. |
 
-The app opens on BTC/USD. Use the symbol picker to switch instruments or choose **Sample data** to explore offline. The dashboard and built-in analyst support English, Turkish, and Simplified Chinese. [Release notes](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.20.1)
+The app opens on BTC/USD. Use the symbol picker to switch instruments or choose **Sample data** to explore offline. The dashboard and built-in analyst support English, Turkish, and Simplified Chinese. [Release notes](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.20.2)
 
 ## How to read the chart
 
@@ -70,9 +70,9 @@ python -m venv .venv
 .\scripts\build-windows.ps1 -Python .\.venv\Scripts\python.exe
 ```
 
-The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.20.1-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
+The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.20.2-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
 
-To build the themed Setup EXE and standalone MSI after building the portable package, run `./scripts/build-setup.ps1 -WixBin PATH_TO_WIX_BINARIES` with the WiX 3.14.1 binaries. This creates `dist/Pivluma-0.20.1-Windows-Setup.exe` and `dist/Pivluma-0.20.1-Windows-Setup.msi`.
+To build the themed Setup EXE and standalone MSI after building the portable package, run `./scripts/build-setup.ps1 -WixBin PATH_TO_WIX_BINARIES` with the WiX 3.14.1 binaries. This creates `dist/Pivluma-0.20.2-Windows-Setup.exe` and `dist/Pivluma-0.20.2-Windows-Setup.msi`.
 
 ## Connect live market data
 
@@ -99,6 +99,10 @@ For a supported live symbol the app requests daily news tone from [GDELT DOC 2.0
 The forecast matches each historical price observation to the previous calendar day's news score. After at least 20 matched returns it can compare a bounded, news-adjusted candidate with the existing price models in walk-forward evaluation. The data panel shows the source, number of matched observations, and whether the current prediction uses the news model. Missing news leaves price-based forecasting available. Ask the analyst about news for the current result.
 
 When llama.cpp is selected, the chart also generates a local-model projection. You can rerun it with **Run llama.cpp forecast**. It gives the model the latest returns and up to 14 recent research scores available before the last price date. Additional inputs include RSI, drawdown, deviation from the 20-observation moving average, and comparable symbol performance when available. The chart labels the research source and draws the local model in a dash-dot line. The model returns estimates at up to five steps. Pivluma compares returns after positive and negative scores. A fading adjustment of at most 0.5 percentage points at the first step requires at least 20 matched observations, at least five positive and five negative cases, and an absolute historical correlation of at least 0.15. The model also receives a comparison with completed historical periods matched by 5- and 20-observation returns, volatility, and research tone where available. The analysis reports the number of matches and the range of subsequent outcomes. When at least eight close matches mostly point in one direction and the pattern method beats a flat-price reference in recent walk-forward tests, the chart moves up to 20% of the way from the model estimate toward the historical median return. Research scores are aggregates. The **Analyze news** shortcut explains the evidence and its limits. The llama.cpp scenario band uses statistical error widths. The walk-forward errors and XLSX export describe the statistical reference.
+
+## TradingView alongside a local forecast
+
+Select a symbol, then open **TradingView** in the Market Data toolbar. **Open TradingView chart** opens the instrument in your browser for price viewing. In the same Pivluma dialog, use a matching loaded series, load saved closes, or import a CSV from a source that permits model analysis. **Run llama.cpp forecast** uses the selected symbol's eligible closing history when the local model is installed. TradingView display prices remain in the browser. [TradingView terms](https://www.tradingview.com/policies/)
 
 ## Forecast Lab
 

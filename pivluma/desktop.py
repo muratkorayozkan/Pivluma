@@ -20,7 +20,7 @@ from pivluma.analyst import answer, price_statistics
 from pivluma.appearance import THEMES, animations_enabled, colors_for, install_brand_font, stylesheet
 from pivluma.chart import PriceChart
 from pivluma.data import PriceStore, read_prices, sample_prices
-from pivluma.dialogs import about_dialog, axis_dialog, history_dialog, settings_dialog, shortcuts_dialog
+from pivluma.dialogs import about_dialog, axis_dialog, history_dialog, settings_dialog, shortcuts_dialog, tradingview_dialog
 from pivluma.export import write_forecast
 from pivluma.forecast import NEWS_MODEL, TRAINING_WINDOW, analyze
 from pivluma.lab import ForecastStore
@@ -135,6 +135,9 @@ class Dashboard(QMainWindow):
         category_row = QHBoxLayout()
         category_row.addWidget(market_heading)
         category_row.addStretch()
+        tradingview = self.localized_button("TradingView")
+        tradingview.clicked.connect(lambda: tradingview_dialog(self))
+        category_row.addWidget(tradingview)
         market_section.addLayout(category_row)
         layout.addLayout(market_section)
         toolbar = QHBoxLayout()
@@ -936,12 +939,29 @@ class Dashboard(QMainWindow):
                 if not accepted:
                     return
                 prices = store.load(symbol)
-            if len(prices) <= TRAINING_WINDOW + 9:
-                raise ValueError(self.text("Not enough stored prices for {symbol}.", symbol=symbol))
-            self.symbol.setText(symbol)
-            self.show_offline_series("Stored CSV", prices, symbol)
+            self.open_saved_series(symbol, prices)
         except (OSError, ValueError, sqlite3.Error) as error:
             self.status.setText(str(error))
+
+    def load_saved_for_symbol(self, symbol):
+        try:
+            if not self.database.is_file():
+                raise ValueError(self.text("Not enough stored prices for {symbol}.", symbol=symbol))
+            with closing(sqlite3.connect(self.database)) as connection:
+                store = PriceStore(connection)
+                prices = store.load(symbol)
+                if not prices:
+                    saved = next((name for name in store.symbols() if name.upper() == symbol), symbol)
+                    prices = store.load(saved)
+            self.open_saved_series(symbol, prices)
+        except (OSError, ValueError, sqlite3.Error) as error:
+            self.status.setText(str(error))
+
+    def open_saved_series(self, symbol, prices):
+        if len(prices) <= TRAINING_WINDOW + 9:
+            raise ValueError(self.text("Not enough stored prices for {symbol}.", symbol=symbol))
+        self.symbol.setText(symbol)
+        self.show_offline_series("Stored CSV", prices, symbol)
 
     def import_csv(self):
         try:
