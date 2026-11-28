@@ -142,8 +142,8 @@ class NewsFeed(QObject):
         self.reply = None
         status = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
         if status == 429:
-            retry = bytes(reply.rawHeader(b"Retry-After")).decode("ascii", errors="ignore")
-            self.retry_after = monotonic() + max(120, min(int(retry), 86400) if retry.isdigit() else 120)
+            retry = bytes(reply.rawHeader("Retry-After")).decode("ascii", errors="ignore")
+            self.retry_after = monotonic() + max(120, min(int(retry), 86400) if retry.isdigit() and len(retry) < 10 else 120)
             self.use_fallback(symbol, query, "GDELT is limiting requests. Try again later or import news scores.")
             return
         try:

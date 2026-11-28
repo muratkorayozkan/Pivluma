@@ -33,9 +33,12 @@ from pivluma.market import FX_SYMBOLS, OTHER_SYMBOLS, PUBLIC_SYMBOLS, MarketFeed
 from pivluma.news import NewsFeed, align_scores, read_news_scores
 from pivluma.patterns import historical_patterns
 from pivluma.research import research_evidence, summarize_research
+from pivluma.research_store import ResearchStore
+from pivluma.research_ui import ResearchWorkspace
 from pivluma.single_instance import SingleInstance
 from pivluma.symbol_catalog import SymbolCatalog
 from pivluma.update_ui import UpdateController
+from pivluma.watch_alerts import WatchAlerts
 
 
 MAX_HORIZON = 120
@@ -74,6 +77,7 @@ class Dashboard(QMainWindow):
         self.llama_source = ""
         self.llama_research = 0.
         self.llama_patterns = None
+        self.llama_context = None
         self.localized = []
         self.market_message = "Twelve Data · Disconnected"
         self.setWindowIcon(QIcon(str(Path(__file__).with_name("pivluma.ico"))))
@@ -199,6 +203,9 @@ class Dashboard(QMainWindow):
         lab = self.localized_button("Forecast Lab")
         lab.clicked.connect(self.open_forecast_lab)
         forecast_controls.addWidget(lab)
+        research = self.localized_button("Research workspace")
+        research.clicked.connect(self.open_research_workspace)
+        forecast_controls.addWidget(research)
         self.dataset = QLabel()
         self.dataset.setTextFormat(Qt.TextFormat.PlainText)
         self.dataset.setWordWrap(True)
@@ -408,6 +415,7 @@ class Dashboard(QMainWindow):
         self.quote_timer = QTimer(self, interval=5000)
         self.quote_timer.timeout.connect(self.update_quote)
         self.quote_timer.start()
+        self.watch_alerts = WatchAlerts(self)
         self.show_sample()
         self.change_theme(self.theme)
 
@@ -464,6 +472,18 @@ class Dashboard(QMainWindow):
             combined = set(self.completion_model.stringList()) | set(symbols)
             self.completion_model.setStringList(sorted(combined))
 
+    def open_research_workspace(self):
+        if not self.prices:
+            self.status.setText(self.text("Price history is needed for analysis."))
+            return
+        self.cancel_model_request()
+        self.local_model.stop_engine()
+        dialog = ResearchWorkspace(self)
+        try:
+            dialog.exec()
+        finally:
+            dialog.deleteLater()
+
     def open_forecast_lab(self):
         if not self.prices or self.chart.result is None:
             self.status.setText(self.text("Price history is needed for analysis."))
@@ -504,6 +524,9 @@ class Dashboard(QMainWindow):
         monitor = self.watch_menu.addAction(self.text("Watchlist forecasts"))
         monitor.setEnabled(bool(self.watchlist))
         monitor.triggered.connect(lambda: watch_forecasts_dialog(self))
+        alerts = self.watch_menu.addAction(self.text("Watchlist alerts"))
+        alerts.setEnabled(bool(self.watchlist) and self.database.is_absolute())
+        alerts.triggered.connect(self.watch_alerts.configure)
         if not self.watchlist:
             self.watch_menu.addAction(self.text("No saved symbols")).setEnabled(False)
         for entry in self.watchlist:
@@ -699,8 +722,18 @@ class Dashboard(QMainWindow):
         if self.prices and symbol == self.series_symbol:
             self.news_scores = scores
             self.news_source = source
+            self.archive_news_scores()
             self.news_message = ""
             self.refresh()
+
+    def archive_news_scores(self):
+        if not self.database.is_absolute() or not self.series_symbol:
+            return
+        try:
+            with closing(sqlite3.connect(self.database)) as connection:
+                ResearchStore(connection).save_scores(self.series_symbol, self.news_source, self.news_scores)
+        except (sqlite3.Error, ValueError):
+            self.status.setText(self.text("Forecast journal unavailable."))
 
     def import_news(self):
         if not self.prices:
@@ -720,6 +753,7 @@ class Dashboard(QMainWindow):
         self.news.cancel()
         self.news_scores = scores
         self.news_source = "Imported news scores"
+        self.archive_news_scores()
         self.news_message = ""
         self.refresh()
 
@@ -886,12 +920,15 @@ class Dashboard(QMainWindow):
         source = ("ECB daily reference rates" if self.market.provider == "ECB"
                   else self.market.with_provider("Twelve Data daily history"))
         self.set_series(source, prices, symbol)
+        self.watch_alerts.receive_history(symbol, prices)
         self.fetch_news()
 
     def receive_quote(self, price, timestamp):
         if self.last_quote is None or timestamp >= self.last_quote[1]:
             self.stream_lost = False
             self.last_quote = price, timestamp
+            if (datetime.now(timezone.utc) - timestamp).total_seconds() < 120:
+                self.watch_alerts.price(self.live_symbol, price, quote=True)
             self.update_quote()
 
     def update_provider_credit(self):
@@ -1169,6 +1206,9 @@ class Dashboard(QMainWindow):
         self.reply.setText(self.model_calculation + "\n\n" + explanation)
 
     def closeEvent(self, event):
+        self.watch_alerts.timer.stop()
+        self.watch_alerts.market.stop()
+        self.watch_alerts.tray.hide()
         self.comparison_market.stop()
         self.local_model.stop_engine()
         super().closeEvent(event)
@@ -1209,6 +1249,7 @@ class Dashboard(QMainWindow):
         self.llama_source = ""
         self.llama_research = 0.
         self.llama_patterns = None
+        self.llama_context = None
         self.update_llama_status()
 
     def update_llama_status(self):
@@ -1250,6 +1291,11 @@ class Dashboard(QMainWindow):
         self.llama_source = facts["research_source"]
         self.llama_research = facts["research_evidence"]["bounded_adjustment_percent"]
         self.llama_patterns = facts["historical_patterns"]
+        self.llama_context = {
+            "source": facts["research_source"], "scores": len(facts["research_scores"]),
+            "five_close_move": facts["price_context_percent"]["last_5_observations"],
+            "rsi": facts["market_context"]["rsi_14_simple"],
+        }
         self.llama_message = "Generating llama.cpp forecast · {source}"
         self.update_llama_status()
         self.local_model.start_forecast(facts)
@@ -1277,7 +1323,7 @@ class Dashboard(QMainWindow):
                         )
                         snapshot = [self.chart.llama_bounds(step) for step in range(len(self.chart.llama_forecast))]
                         store.save(self.series_symbol, latest.day, "llama.cpp", self.chart.llama_forecast,
-                                   origin_close=latest.close, bands=snapshot)
+                                   origin_close=latest.close, bands=snapshot, research_context=self.llama_context)
                 except (sqlite3.Error, ValueError):
                     self.status.setText(self.text("Forecast journal unavailable."))
             self.chart.reveal()
@@ -1353,6 +1399,7 @@ def main():
     settings = QSettings("Pivluma", "Pivluma")
     window.settings = settings
     window.watchlist = settings.value("watchlist", [], type=list)
+    window.watch_alerts.load()
     window.change_theme(settings.value("theme", "dark-blue", type=str))
     window.set_cloud_access(settings.value("cloud_url", "", type=str), "")
     window.restore_analyst_model()

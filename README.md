@@ -2,17 +2,17 @@
 
 Pivluma is a Windows desktop application in development for financial forecasting and market analysis.
 
-![Pivluma 0.21.0 showing the wordmark, category filter, Forecast Lab button, and sample price chart](docs/images/pivluma-dashboard.png)
+![Pivluma dashboard showing the wordmark, category filter, Forecast Lab button, and sample price chart](docs/images/pivluma-dashboard.png)
 
-## Download Pivluma 0.21.0
+## Download Pivluma 0.22.0
 
 | Windows x64 package | How to use it |
 | --- | --- |
-| [Setup EXE](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.21.0/Pivluma-0.21.0-Windows-Setup.exe) | Installs to `C:\Program Files\Pivluma` and adds a Start menu entry. The desktop shortcut is selected by default. The local model download is optional. Windows requests administrator approval for installation. |
-| [Portable ZIP](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.21.0/Pivluma-0.21.0-Windows.zip) | Extract the entire archive and run `Pivluma.exe`. Keep the neighboring `_internal` folder. |
-| [Standalone MSI](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.21.0/Pivluma-0.21.0-Windows-Setup.msi) | Install with Windows Installer. To add the local model, use Pivluma Settings after setup. |
+| [Setup EXE](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.22.0/Pivluma-0.22.0-Windows-Setup.exe) | Installs to `C:\Program Files\Pivluma` and adds a Start menu entry. The desktop shortcut is selected by default. The local model download is optional. Windows requests administrator approval for installation. |
+| [Portable ZIP](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.22.0/Pivluma-0.22.0-Windows.zip) | Extract the entire archive and run `Pivluma.exe`. Keep the neighboring `_internal` folder. |
+| [Standalone MSI](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.22.0/Pivluma-0.22.0-Windows-Setup.msi) | Install with Windows Installer. To add the local model, use Pivluma Settings after setup. |
 
-The market header reports the closing source, most recent closing date, and the timestamp and mode of the last quote. REST polling, older quotes, ECB reference data, offline history, and sample data have distinct labels. The app opens on BTC/USD. Use the symbol picker to switch instruments or choose **Sample data** to explore offline. The dashboard and built-in analyst support English, Turkish, and Simplified Chinese. [Release notes](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.21.0)
+The market header reports the closing source, most recent closing date, and the timestamp and mode of the last quote. REST polling, older quotes, ECB reference data, offline history, and sample data have distinct labels. The app opens on BTC/USD. Use the symbol picker to switch instruments or choose **Sample data** to explore offline. The dashboard and built-in analyst support English, Turkish, and Simplified Chinese. [Release notes](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.22.0)
 
 ## How to read the chart
 
@@ -70,9 +70,9 @@ python -m venv .venv
 .\scripts\build-windows.ps1 -Python .\.venv\Scripts\python.exe
 ```
 
-The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.21.0-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
+The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.22.0-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
 
-To build the themed Setup EXE and standalone MSI after building the portable package, run `./scripts/build-setup.ps1 -WixBin PATH_TO_WIX_BINARIES` with the WiX 3.14.1 binaries. This creates `dist/Pivluma-0.21.0-Windows-Setup.exe` and `dist/Pivluma-0.21.0-Windows-Setup.msi`.
+To build the themed Setup EXE and standalone MSI after building the portable package, run `./scripts/build-setup.ps1 -WixBin PATH_TO_WIX_BINARIES` with the WiX 3.14.1 binaries. This creates `dist/Pivluma-0.22.0-Windows-Setup.exe` and `dist/Pivluma-0.22.0-Windows-Setup.msi`.
 
 ## Connect live market data
 
@@ -103,6 +103,20 @@ When llama.cpp is selected, the chart also generates a local-model projection. Y
 ## TradingView alongside a local forecast
 
 Select a symbol, then open **TradingView** in the Market Data toolbar. **Open TradingView chart** opens the instrument in your browser for price viewing. In the same Pivluma dialog, use a matching loaded series, load saved closes, or import a CSV from a source that permits model analysis. **Run llama.cpp forecast** uses the selected symbol's eligible closing history when the local model is installed. TradingView display prices remain in the browser. [TradingView terms](https://www.tradingview.com/policies/)
+
+## Research workspace and watchlist alerts
+
+![Research workspace with sample headline and saved forecast](docs/images/pivluma-research.png)
+
+Open **Research workspace** after loading a symbol. Select a GDELT headline to show the nearest preceding close on the chart, or open the publisher's article. Times are local and reflect when GDELT first saw the article. The forecast summary compares the latest saved estimate with a preceding estimate at the same horizon and displays the latest inputs when available.
+
+The **Model performance** tab uses one prospectively recorded, completed llama.cpp run per symbol, origin and horizon. The flat-price reference uses the same closing outcomes. Direction is measured from the close at the forecast origin. Observed coverage uses the final-step band saved at prediction time, including the scenario band when it was used.
+
+In **Market replay**, pick a historical close and generate a forecast before revealing the subsequent closes one at a time. With llama.cpp installed, it is available alongside the statistical reference. The model receives only closes through the selected date and news scores from the latest snapshot archived strictly before that date. Earlier periods without an archived snapshot use prices only. Market replay uses the price series currently loaded, which may include historical revisions.
+
+![Market replay with a llama.cpp forecast and three revealed closes on sample prices](docs/images/pivluma-replay.png)
+
+Open **Watchlist → Watchlist alerts** to enable a crossing threshold, new headline notifications or saved-band breaches per symbol. Alerts run while Pivluma is open. The selected symbol uses fresh quotes when available, and watched symbols are checked for closing updates in rotation every three minutes, one symbol per tick. Closing checks depend on the symbol's configured data source. The initial batch of headlines establishes a baseline and later batches are grouped per symbol. Price notifications have a one-minute cooldown. Windows notifications depend on system settings, with in-app status as a fallback.
 
 ## Forecast Lab
 

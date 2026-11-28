@@ -27,6 +27,8 @@ class PriceChart(QWidget):
         self.colors = colors_for("dark-blue", Qt.ColorScheme.Dark)
         self.result = None
         self.llama_forecast = ()
+        self.replay_closes = ()
+        self.replay_mode = False
         self.calibrated_bands = ()
         self.comparison_symbol = ""
         self.comparison_closes = {}
@@ -114,6 +116,7 @@ class PriceChart(QWidget):
         values = [*history, *(value for _, value in self.comparison_points())]
         if self.history_offset == 0 and self.llama_visible():
             values.extend(self.llama_forecast)
+            values.extend(self.replay_closes)
         if self.history_offset == 0 and self.llama_band_visible():
             for step in range(len(self.llama_forecast)):
                 values.extend(self.llama_bounds(step))
@@ -180,8 +183,12 @@ class PriceChart(QWidget):
                 text += " · " + template.format(symbol=self.comparison_symbol, value=value)
             return text
         step = index - len(history)
-        template = translate(self.language, "Forecast step {step} · llama.cpp {price:.8g}")
+        key = ("Forecast step {step} · Estimate {price:.8g}" if self.replay_mode else
+               "Forecast step {step} · llama.cpp {price:.8g}")
+        template = translate(self.language, key)
         text = template.format(step=step + 1, price=self.llama_forecast[step])
+        if step < len(self.replay_closes):
+            text += " · " + translate(self.language, "Actual {price:.8g}").format(price=self.replay_closes[step])
         if self.llama_band_visible():
             lower, upper = self.llama_bounds(step)
             calibrated = step < len(self.calibrated_bands) and self.calibrated_bands[step] is not None
@@ -344,6 +351,11 @@ class PriceChart(QWidget):
             painter.setPen(QPen(llama_color, 2, Qt.PenStyle.DashDotLine))
             painter.drawPolyline(QPolygonF([
                 point(start + i, value) for i, value in enumerate([history[-1], *self.llama_forecast])
+            ]))
+        if show_forecast and self.replay_closes:
+            painter.setPen(QPen(QColor(actual_color), 2.5, Qt.PenStyle.DotLine))
+            painter.drawPolyline(QPolygonF([
+                point(start + i, value) for i, value in enumerate([history[-1], *self.replay_closes])
             ]))
         painter.restore()
         for index, radius in ((self.hover_index, 2), (self.selected_index, 4)):

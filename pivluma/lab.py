@@ -72,23 +72,25 @@ class ForecastStore:
                 origin_close REAL,
                 recorded_on TEXT,
                 bands TEXT,
+                research_context TEXT,
                 UNIQUE(symbol, origin, engine, predicted)
             )
         """)
 
         columns = {row[1] for row in connection.execute("PRAGMA table_info(forecast_runs)")}
-        for column, definition in (("origin_close", "REAL"), ("recorded_on", "TEXT"), ("bands", "TEXT")):
+        for column, definition in (("origin_close", "REAL"), ("recorded_on", "TEXT"), ("bands", "TEXT"),
+                                   ("research_context", "TEXT")):
             if column not in columns:
                 connection.execute(f"ALTER TABLE forecast_runs ADD COLUMN {column} {definition}")
 
-    def save(self, symbol, origin, engine, path, *, origin_close=None, bands=None, recorded_on=None):
+    def save(self, symbol, origin, engine, path, *, origin_close=None, bands=None, recorded_on=None, research_context=None):
         recorded_on = recorded_on or datetime.now(timezone.utc).date()
         with self.connection:
             self.connection.execute(
-                "INSERT OR IGNORE INTO forecast_runs(symbol, origin, engine, predicted, origin_close, recorded_on, bands) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO forecast_runs(symbol, origin, engine, predicted, origin_close, recorded_on, bands, research_context) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (symbol, origin.isoformat(), engine, json.dumps(list(path), allow_nan=False),
-                 origin_close, recorded_on.isoformat(), json.dumps(bands, allow_nan=False)),
+                 origin_close, recorded_on.isoformat(), json.dumps(bands, allow_nan=False), json.dumps(research_context, allow_nan=False)),
             )
 
     def calibrate(self, symbol, cutoff, origin_close, path):
