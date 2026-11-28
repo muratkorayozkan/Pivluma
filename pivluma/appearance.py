@@ -51,6 +51,8 @@ def stylesheet(colors):
     background, surface, text, border, accent, _, _ = colors
     return f"""
         QWidget {{ background: {background}; color: {text}; font-size: 14px; }}
+        QWidget[aboutCard="true"] {{ background: {surface}; border-radius: 8px; }}
+        QWidget[aboutCard="true"] QLabel {{ background: transparent; }}
         QLabel#title {{ font-size: 31px; font-weight: 700; }}
         QLabel[sectionTitle="true"] {{ font-size: 17px; font-weight: 650; }}
         QLabel#dataset {{ font-size: 16px; font-weight: 650; }}

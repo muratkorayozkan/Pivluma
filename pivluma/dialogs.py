@@ -1,13 +1,15 @@
 """Desktop dialogs for appearance, chart limits, and published release notes."""
 
 import json
+import platform
+import sys
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout, QLabel, QLineEdit,
-    QPlainTextEdit, QPushButton, QVBoxLayout,
+    QApplication, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
+    QPlainTextEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
 from pivluma import __version__
@@ -112,16 +114,114 @@ def shortcuts_dialog(window):
 
 def about_dialog(window):
     dialog = _dialog(window, "About Pivluma")
+    dialog.setWindowIcon(window.windowIcon())
+    available = window.screen().availableGeometry()
+    dialog.resize(min(600, available.width() - 48), min(515, available.height() - 80))
     layout = QVBoxLayout(dialog)
-    layout.addWidget(QLabel(f"Pivluma {__version__}"))
+    layout.setContentsMargins(18, 18, 18, 14)
+    scroll = QScrollArea()
+    scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+    scroll.setWidgetResizable(True)
+    layout.addWidget(scroll, 1)
+    content = QWidget()
+    scroll.setWidget(content)
+    sections = QVBoxLayout(content)
+    sections.setContentsMargins(0, 0, 8, 0)
+    sections.setSpacing(12)
+
+    header = QWidget()
+    header.setProperty("aboutCard", True)
+    branding = QHBoxLayout(header)
+    branding.setContentsMargins(16, 14, 16, 14)
+    icon = QLabel()
+    icon.setPixmap(window.windowIcon().pixmap(48, 48))
+    branding.addWidget(icon, alignment=Qt.AlignmentFlag.AlignTop)
+    summary = QVBoxLayout()
+    title = QLabel("Pivluma")
+    title.setObjectName("title")
+    summary.addWidget(title)
     description = QLabel(window.text("A Windows application for market data, forecasting, and local analysis."))
     description.setWordWrap(True)
-    layout.addWidget(description)
-    project = QPushButton("GitHub")
-    project.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(ROOT)))
-    layout.addWidget(project)
-    _buttons(dialog, layout, QDialogButtonBox.StandardButton.Close)
-    dialog.exec()
+    summary.addWidget(description)
+    branding.addLayout(summary, 1)
+    sections.addWidget(header)
+
+    system = f"{platform.system()} · {platform.machine()}"
+    mode = window.text("Windows package" if getattr(sys, "frozen", False) else "Source run")
+    details = QWidget()
+    details.setProperty("aboutCard", True)
+    grid = QGridLayout(details)
+    grid.setContentsMargins(16, 12, 16, 12)
+    fields = (("Running version", f"v{__version__}"), ("Platform", system), ("Distribution", mode))
+    for index, (key, value) in enumerate(fields):
+        grid.addWidget(QLabel(window.text(key)), index, 0)
+        field = QLabel(value)
+        field.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        grid.addWidget(field, index, 1)
+    grid.setColumnStretch(1, 1)
+    sections.addWidget(details)
+
+    updates = QWidget()
+    updates.setProperty("aboutCard", True)
+    update_layout = QVBoxLayout(updates)
+    update_layout.setContentsMargins(16, 12, 16, 12)
+    heading = QLabel(window.text("Updates"))
+    heading.setProperty("sectionTitle", True)
+    update_layout.addWidget(heading)
+    status = QLabel()
+    status.setWordWrap(True)
+    status.setObjectName("aboutUpdateStatus")
+    update_layout.addWidget(status)
+    check = QPushButton()
+    check.clicked.connect(window.update_button.click)
+    update_layout.addWidget(check, alignment=Qt.AlignmentFlag.AlignLeft)
+    sections.addWidget(updates)
+
+    links = QGridLayout()
+    for index, (label, suffix) in enumerate((
+        ("Source code", ""), ("Release notes for this version", f"/releases/tag/v{__version__}"),
+        ("Report a problem", "/issues/new"),
+    )):
+        button = QPushButton(window.text(label))
+        button.clicked.connect(lambda checked=False, path=suffix: QDesktopServices.openUrl(QUrl(ROOT + path)))
+        links.addWidget(button, index // 2, index % 2)
+    sections.addLayout(links)
+    sections.addStretch()
+
+    footer = QHBoxLayout()
+    layout.addLayout(footer)
+    copy = QPushButton(window.text("Copy version details"))
+    feedback = QLabel()
+    footer.addWidget(copy)
+    footer.addWidget(feedback, 1)
+
+    def copy_details():
+        text = "\n".join(["Pivluma", *(f"{window.text(key)} · {value}" for key, value in fields)])
+        QApplication.clipboard().setText(text)
+        feedback.setText(window.text("Version details copied."))
+
+    copy.clicked.connect(copy_details)
+    close = QPushButton(window.text("Close dialog"))
+    close.clicked.connect(dialog.reject)
+    close.setDefault(True)
+    footer.addWidget(close)
+
+    def sync_update():
+        packaged = not window.update_button.isHidden()
+        message = window.update_message or ("Updates have not been checked yet." if packaged else
+                                            "Automatic updates are available in the Windows package.")
+        status.setText(window.text(message))
+        check.setText(window.update_button.text())
+        check.setVisible(packaged)
+        check.setEnabled(window.update_button.isEnabled())
+
+    sync_update()
+    window.update_status_changed.connect(sync_update)
+    try:
+        dialog.exec()
+    finally:
+        window.update_status_changed.disconnect(sync_update)
+        dialog.deleteLater()
 
 
 def history_dialog(window):

@@ -8,7 +8,7 @@ from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
-from PySide6.QtCore import QEasingCurve, QProcess, QPropertyAnimation, QSettings, QStandardPaths, Qt, QTimer
+from PySide6.QtCore import QEasingCurve, QProcess, QPropertyAnimation, QSettings, QStandardPaths, Qt, QTimer, Signal
 from PySide6.QtGui import QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFileDialog, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu,
@@ -23,6 +23,7 @@ from pivluma.data import PriceStore, read_prices, sample_prices
 from pivluma.dialogs import about_dialog, axis_dialog, history_dialog, settings_dialog, shortcuts_dialog
 from pivluma.export import write_forecast
 from pivluma.forecast import NEWS_MODEL, TRAINING_WINDOW, analyze
+from pivluma.llama_forecast import FORECAST_TASK, forecast_input, forecast_path
 from pivluma.local_assets import ready
 from pivluma.local_model import LOCAL_MODEL, LocalModel
 from pivluma.localization import translate
@@ -45,6 +46,7 @@ SHORTCUTS = (
 
 
 class Dashboard(QMainWindow):
+    update_status_changed = Signal()
     shortcuts = SHORTCUTS
 
     def __init__(self, database: Path):
@@ -59,6 +61,12 @@ class Dashboard(QMainWindow):
         self.cloud_code = ""
         self.local_model = LocalModel(database.parent.resolve() / "local-ai-b12823", self)
         self.local_model.completed.connect(self.show_model_answer)
+        self.llama_timer = QTimer(self, singleShot=True, interval=800)
+        self.llama_timer.timeout.connect(self.request_llama_forecast)
+        self.llama_pending = False
+        self.llama_message = ""
+        self.llama_source = ""
+        self.llama_research = ()
         self.localized = []
         self.market_message = "Twelve Data · Disconnected"
         self.setWindowIcon(QIcon(str(Path(__file__).with_name("pivluma.ico"))))
@@ -200,6 +208,12 @@ class Dashboard(QMainWindow):
         chart_controls.addWidget(reset)
         chart_controls.addStretch()
         chart_layout.addLayout(chart_controls)
+        self.llama_button = self.localized_button("Run llama.cpp forecast")
+        self.llama_button.clicked.connect(self.request_llama_forecast)
+        self.llama_status = QLabel()
+        self.llama_status.setWordWrap(True)
+        chart_layout.addWidget(self.llama_button, alignment=Qt.AlignmentFlag.AlignLeft)
+        chart_layout.addWidget(self.llama_status)
         self.chart = PriceChart()
         self.history_range.currentIndexChanged.connect(
             lambda: self.chart.set_history_limit(self.history_range.currentData())
@@ -425,6 +439,7 @@ class Dashboard(QMainWindow):
         self.update_label.setToolTip(self.text(message))
         self.update_icon.setVisible(bool(message) and not self.update_button.isHidden())
         self.update_label.setVisible(bool(message) and self.width() >= 1120 and not self.update_button.isHidden())
+        self.update_status_changed.emit()
 
     def arrange_workspace(self):
         wide = self.width() >= 1180
@@ -506,8 +521,9 @@ class Dashboard(QMainWindow):
         self.update_quote()
         self.update_summary()
         self.show_chart_point(self.chart.selected_index)
+        self.update_llama_status()
         self.render_update_status()
-        self.local_model.cancel()
+        self.cancel_model_request()
         if self.reply.text():
             self.render_analyst(False)
         self.status.clear()
@@ -586,7 +602,7 @@ class Dashboard(QMainWindow):
             self.connect_market()
 
     def clear_analysis(self, symbol):
-        self.local_model.cancel()
+        self.cancel_model_request()
         self.reset_news()
         self.series_source = ""
         self.series_symbol = symbol
@@ -594,6 +610,7 @@ class Dashboard(QMainWindow):
         self.chart.history = []
         self.chart.days = []
         self.chart.result = None
+        self.clear_llama_forecast()
         self.chart.plot_area.setWidth(0)
         self.chart.view_changed()
         self.horizon.setEnabled(False)
@@ -753,26 +770,38 @@ class Dashboard(QMainWindow):
 
     def refresh_contextual_reply(self):
         if self.reply.text() and self.contextual_topic() is not None:
-            self.local_model.cancel()
+            self.cancel_model_request()
             self.render_analyst(False)
 
     def set_cloud_access(self, address, code):
-        self.local_model.cancel()
+        self.cancel_model_request()
         self.cloud_url = address.strip()
         self.cloud_code = code.strip()
         if self.settings is not None:
             self.settings.setValue("cloud_url", self.cloud_url)
 
+    def restore_analyst_model(self):
+        saved = self.settings.value("analyst_model", "", type=str)
+        if ready(self.local_model.root) and not self.settings.value("local_model_default_applied", False, type=bool):
+            saved = LOCAL_MODEL
+        self.set_analyst_model(saved)
+
     def set_analyst_model(self, model):
+        self.cancel_model_request()
         self.local_model.stop_engine()
         if model not in ("builtin", "cloud", LOCAL_MODEL):
             model = LOCAL_MODEL if ready(self.local_model.root) else ""
         self.analyst_model = "" if model == "builtin" or (model == LOCAL_MODEL and not ready(self.local_model.root)) else model
         if self.settings is not None:
             self.settings.setValue("analyst_model", model)
+            if self.analyst_model == LOCAL_MODEL:
+                self.settings.setValue("local_model_default_applied", True)
+        self.update_llama_status()
+        if self.analyst_model == LOCAL_MODEL and self.prices and not self.chart.llama_forecast:
+            self.llama_timer.start()
 
     def ask_analyst(self):
-        self.local_model.cancel()
+        self.cancel_model_request()
         self.render_analyst(True)
         self.animate_reply()
 
@@ -830,6 +859,9 @@ class Dashboard(QMainWindow):
             self.local_model.start(self.analyst_model, self.language, question[:2000], facts)
 
     def show_model_answer(self, model, response):
+        if model == FORECAST_TASK:
+            self.receive_llama_forecast(response)
+            return
         if model == "cloud":
             explanation = (
                 self.text("Cloud analyst") + "\n" + response
@@ -866,16 +898,72 @@ class Dashboard(QMainWindow):
             return
         self.status.setText(self.text("Forecast exported to {path}", path=path))
 
+    def cancel_model_request(self):
+        self.llama_timer.stop()
+        self.local_model.cancel()
+        if self.llama_pending:
+            self.llama_pending = False
+            self.llama_message = "llama.cpp forecast interrupted."
+            self.update_llama_status()
+
+    def clear_llama_forecast(self):
+        self.chart.llama_forecast = ()
+        self.llama_message = ""
+        self.llama_source = ""
+        self.llama_research = ()
+        self.update_llama_status()
+
+    def update_llama_status(self):
+        installed = ready(self.local_model.root)
+        self.llama_button.setVisible(installed)
+        self.llama_button.setEnabled(bool(self.prices) and not self.llama_pending)
+        self.llama_status.setVisible(bool(self.llama_message))
+        source = self.text(self.llama_source or "Price history only")
+        self.llama_status.setText(self.text(self.llama_message, source=source))
+
+    def request_llama_forecast(self):
+        self.llama_timer.stop()
+        if not self.prices or not ready(self.local_model.root):
+            return
+        if self.local_model.reply is not None and hasattr(self, "model_calculation") and not self.llama_pending:
+            self.reply.setText(self.model_calculation)
+        self.llama_pending = True
+        facts = forecast_input(self.prices, self.horizon.value(), self.news_scores, self.news_source)
+        self.llama_source = facts["research_source"]
+        self.llama_research = facts["research_scores"]
+        self.llama_message = "Generating llama.cpp forecast · {source}"
+        self.update_llama_status()
+        self.local_model.start_forecast(facts)
+
+    def receive_llama_forecast(self, response):
+        if not self.llama_pending:
+            return
+        self.llama_pending = False
+        try:
+            self.chart.llama_forecast = forecast_path(
+                response, self.prices[-1].close, self.horizon.value(), self.llama_research
+            )
+        except (OverflowError, ValueError):
+            self.llama_message = "llama.cpp forecast unavailable."
+        else:
+            self.llama_message = "Dash-dot line · llama.cpp forecast · {source}. Error and interval belong to the statistical forecast."
+            self.chart.update()
+            self.show_chart_point(self.chart.selected_index)
+        self.update_llama_status()
+
     def refresh(self):
         if not self.prices:
             return
-        self.local_model.cancel()
+        self.cancel_model_request()
         closes = [price.close for price in self.prices]
         news = align_scores(self.prices, self.news_scores) if self.news_scores else None
         result = analyze(closes, self.horizon.value(), news)
         self.chart.history = closes
         self.chart.days = [price.day for price in self.prices]
         self.chart.result = result
+        self.clear_llama_forecast()
+        if self.analyst_model == LOCAL_MODEL:
+            self.llama_timer.start()
         self.update_news_status()
         self.chart.hover_index = None
         self.chart.select_index(None)
@@ -924,7 +1012,7 @@ def main():
     window.watchlist = settings.value("watchlist", [], type=list)
     window.change_theme(settings.value("theme", "dark-blue", type=str))
     window.set_cloud_access(settings.value("cloud_url", "", type=str), "")
-    window.set_analyst_model(settings.value("analyst_model", "", type=str))
+    window.restore_analyst_model()
     application.styleHints().colorSchemeChanged.connect(
         lambda *_: window.change_theme(window.theme) if window.theme == "system" else None
     )

@@ -4,11 +4,12 @@ import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from PySide6.QtCore import QStandardPaths, QTimer
-from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtCore import QSettings, QStandardPaths, QTimer
+from PySide6.QtWidgets import QApplication
 from shiboken6 import delete
 
 from pivluma.desktop import Dashboard, main
+from pivluma.local_model import LOCAL_MODEL
 from pivluma.model_download import DownloadDialog
 from pivluma.updates import check_update, prepare_update
 
@@ -49,7 +50,14 @@ if __name__ == "__main__":
         dialog = DownloadDialog(directory / "local-ai-b12823", lambda message: message)
         if not dialog.worker.success:
             QTimer.singleShot(0, dialog.start)
-        raise SystemExit(0 if dialog.exec() == QDialog.DialogCode.Accepted else 1)
+        dialog.exec()
+        if not dialog.worker.success:
+            raise SystemExit(1)
+        settings = QSettings("Pivluma", "Pivluma")
+        settings.setValue("analyst_model", LOCAL_MODEL)
+        settings.setValue("local_model_default_applied", True)
+        settings.sync()
+        raise SystemExit(0 if settings.status() == QSettings.Status.NoError else 1)
     if sys.argv[1:] == ["--smoke-test"]:
         raise SystemExit(smoke_test())
     if sys.argv[1:] == ["--smoke-update"]:

@@ -26,6 +26,7 @@ class PriceChart(QWidget):
         self.plot_area = QRectF()
         self.colors = colors_for("dark-blue", Qt.ColorScheme.Dark)
         self.result = None
+        self.llama_forecast = ()
         self.language = "en"
         self.layers = {"close": True, "average": False, "forecast": True, "interval": True}
         self.drag_start = None
@@ -47,7 +48,7 @@ class PriceChart(QWidget):
         return self.days[start:end]
 
     def forecast_visible(self):
-        return self.history_offset == 0 and (self.layers["forecast"] or self.layers["interval"])
+        return self.history_offset == 0 and (self.layers["forecast"] or self.layers["interval"] or self.llama_forecast)
 
     def moving_average(self):
         start, end = self.bounds()
@@ -63,6 +64,8 @@ class PriceChart(QWidget):
             if self.layers["interval"]:
                 values.extend(self.result.lower)
                 values.extend(self.result.upper)
+        if self.history_offset == 0:
+            values.extend(self.llama_forecast)
         if self.layers["average"]:
             values.extend(value for _, value in self.moving_average())
         lower, upper = min(values), max(values)
@@ -121,8 +124,12 @@ class PriceChart(QWidget):
         template = translate(
             self.language, "Forecast step {step} · {price:.8g} · Interval [{lower:.8g}, {upper:.8g}]"
         )
-        return template.format(step=step + 1, price=self.result.forecast[step],
+        text = template.format(step=step + 1, price=self.result.forecast[step],
                                lower=self.result.lower[step], upper=self.result.upper[step])
+        if self.llama_forecast:
+            label = translate(self.language, "llama.cpp forecast")
+            text += f" · {label} {self.llama_forecast[step]:.8g}"
+        return text
 
     def index_at(self, position):
         if not self.plot_area.contains(position) or self.plot_area.width() <= 0:
@@ -238,6 +245,12 @@ class PriceChart(QWidget):
             painter.setPen(QPen(QColor(forecast_color), 2, Qt.PenStyle.DashLine))
             painter.drawPolyline(QPolygonF([
                 point(start + i, value) for i, value in enumerate([history[-1], *result.forecast])
+            ]))
+        if show_forecast and self.llama_forecast:
+            color = QColor("#fbbf65" if QColor(surface).lightness() < 128 else "#9a4900")
+            painter.setPen(QPen(color, 2, Qt.PenStyle.DashDotLine))
+            painter.drawPolyline(QPolygonF([
+                point(start + i, value) for i, value in enumerate([history[-1], *self.llama_forecast])
             ]))
         for index, radius in ((self.hover_index, 2), (self.selected_index, 4)):
             if index is not None:

@@ -6,7 +6,7 @@ Pivluma is a Windows desktop application in development for financial forecastin
 
 ## Current release
 
-[Pivluma 0.17.0](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.17.0) is the current release. Download the [portable Windows x64 ZIP](https://github.com/muratkorayozkan/Pivluma/releases/latest), extract it, and run Pivluma.exe. The themed Windows Setup EXE is available on the same release page, alongside the standalone MSI. Setup starts with the Windows light or dark preference and offers a theme switch. It installs to `C:\Program Files\Pivluma` with a Start menu entry. Its desktop shortcut option is selected by default and can be cleared during setup. Windows requests administrator approval for the MSI.
+[Pivluma 0.17.1](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.17.1) is the current release. Download the [portable Windows x64 ZIP](https://github.com/muratkorayozkan/Pivluma/releases/latest), extract it, and run Pivluma.exe. The themed Windows Setup EXE is available on the same release page, alongside the standalone MSI. Setup starts with the Windows light or dark preference and offers a theme switch. It installs to `C:\Program Files\Pivluma` with a Start menu entry. Its desktop shortcut option is selected by default and can be cleared during setup. Windows requests administrator approval for the MSI.
 
 The forecasting engine compares a last-price baseline, linear trend, damped trend, and exponentially smoothed level. At each origin it uses only completed prior forecasts to select a model, using recent errors at several lead times. The dashboard reports the selected model and compares the full selection strategy against the last-price baseline on the same walk-forward origins. Forecast intervals use empirical errors for each step.
 
@@ -29,7 +29,7 @@ Use the **Language** menu to switch between **EN · English**, **TR · Türkçe*
 
 The chart and analyst appear side by side in wide windows and in separate tabs in compact windows. Choose **Chart history** to change the number of closing prices displayed. Use the mouse wheel over the plot to zoom and drag the plot left or right to move through history. Hover over a point for details, or click to select it. Use **Reset chart** to return to the latest 120 observations and automatic price scaling. The four layer toggles control closing prices, the 20-observation moving average, the forecast, and its interval. When the view moves away from the latest close, it shows historical data for that period. Click any historical or forecast point to inspect its value and, for a forecast, its interval. **Price axis** can set the lower and upper limits or restore automatic scaling.
 
-The upper-right controls open revision history, the about page, and settings. **Settings → Theme** includes a Windows system option and light and dark palettes. The theme is remembered on this PC. Revision history loads recent published GitHub release notes.
+The upper-right controls open revision history, the about page, and settings. **Settings → Theme** includes a Windows system option and light and dark palettes. The theme is remembered on this PC. Revision history loads recent published GitHub release notes. **About** shows the running version and package type and lets you copy those details, check for updates, view the release notes, or report a problem.
 
 Open **Watchlist** beside the symbol picker to save the current symbol or reopen a saved one. The list is stored on this PC. Selecting a saved symbol updates the same chart, forecast, and analyst context used by the symbol picker. Use **Chart focus** or **Ctrl+Shift+F** to make more room for the chart. The price summary shows the change from the previous observation, which can be an earlier working day for FX.
 
@@ -57,7 +57,7 @@ python -m venv .venv
 .\scripts\build-windows.ps1 -Python .\.venv\Scripts\python.exe
 ```
 
-The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.17.0-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
+The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.17.1-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
 
 
 ## Connect live market data
@@ -73,7 +73,7 @@ The chart uses daily REST history. If daily history is unavailable, Pivluma stil
 Provider references: [Kraken daily history](https://docs.kraken.com/api/docs/rest-api/get-ohlc-data), [Kraken ticker stream](https://docs.kraken.com/api/docs/websocket-v2/ticker), [REST API](https://twelvedata.com/docs), [WebSocket API](https://twelvedata.com/docs/websocket/websocket-getting-started), and [plans](https://twelvedata.com/pricing).
 
 
-To build the themed Setup EXE and standalone MSI after building the portable package, run `./scripts/build-setup.ps1 -WixBin PATH_TO_WIX_BINARIES` with the WiX 3.14.1 binaries. This creates `dist/Pivluma-0.17.0-Windows-Setup.exe` and `dist/Pivluma-0.17.0-Windows-Setup.msi`.
+To build the themed Setup EXE and standalone MSI after building the portable package, run `./scripts/build-setup.ps1 -WixBin PATH_TO_WIX_BINARIES` with the WiX 3.14.1 binaries. This creates `dist/Pivluma-0.17.1-Windows-Setup.exe` and `dist/Pivluma-0.17.1-Windows-Setup.msi`.
 
 ## Cloud analyst
 
@@ -85,13 +85,15 @@ For a supported live symbol the app requests daily news tone from [GDELT DOC 2.0
 
 The forecast matches each historical price observation to the previous calendar day's news score. After at least 20 matched returns it can compare a bounded, news-adjusted candidate with the existing price models in walk-forward evaluation. The data panel shows the source, number of matched observations, and whether the current prediction uses the news model. Missing news leaves price-based forecasting available. Ask the analyst about news for the current result.
 
+When llama.cpp is selected, the chart also generates a local-model projection. You can rerun it with **Run llama.cpp forecast**. It gives the model the latest returns and up to 14 recent research scores available before the last price date. The chart labels the research source and draws the local model in a dash-dot line. The model returns estimates at up to five steps. Pivluma applies a fading research adjustment of at most 0.5 percentage points at the first step and interpolates between the estimates. The shaded interval, walk-forward errors, and XLSX export describe the statistical forecast.
+
 ## Ask the local analyst
 
 Use the analyst topic buttons or enter an English, Turkish, or Simplified Chinese question. **Visible period** summarizes the closing prices currently shown in the chart. **Selected point** explains the highlighted historical or forecast observation. Both shortcuts follow the chart as you change the selected point or visible period. The moving average uses the last 20 closes (or all available closes if fewer). Replies use the selected interface language. Try “How did the price move?”, “What is the forecast?”, or “How accurate was the model?”. Replies use the active series, date range, and forecast horizon. The built-in analyst matches supported topics and computes answers offline.
 
 For natural-language explanations, optionally download the local llama.cpp engine and Qwen3 1.7B (4-bit) by selecting the checkbox in **Windows Setup EXE** or choosing **Settings → Download local model**. The portable and standalone MSI builds support the in-app download. The download is approximately 1.31 GB and needs 2 GB of free disk space. It is available for Windows x64 and uses the CPU. Pivluma verifies both downloads and stores them in the current user's Pivluma application data folder. Only the package and model download require internet access.
 
-Pivluma defaults to the local model when installed and to the built-in analyst otherwise. You can explicitly choose the built-in or cloud analyst in Settings. The built-in calculations remain visible above generated explanations. The local engine runs on loopback, starts on demand, stops after two idle minutes, and shuts down when Pivluma closes.
+A successful model download selects the local model. Existing installations with a downloaded model switch to it once after upgrading. Pivluma defaults to the built-in analyst when no local model is installed. You can explicitly choose the built-in or cloud analyst in Settings. The built-in calculations remain visible above generated explanations. The local engine runs on loopback, starts on demand, stops after two idle minutes, and shuts down when Pivluma closes.
 
 [llama.cpp release](https://github.com/ggml-org/llama.cpp/releases/tag/b12823) · [Qwen3 model](https://huggingface.co/ggml-org/Qwen3-1.7B-GGUF)
 

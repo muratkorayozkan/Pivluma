@@ -65,10 +65,10 @@ class UpdateController(QObject):
 
     def finished(self, message, pending):
         self.pending = pending
-        self.set_status(message)
         if pending is not None:
             self.window.localize(self.button.setText, "Open update")
         self.button.setEnabled(True)
+        self.set_status(message)
 
     def activate(self):
         if self.pending is None:

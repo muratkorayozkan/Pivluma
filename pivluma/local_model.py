@@ -11,6 +11,7 @@ from PySide6.QtNetwork import QNetworkAccessManager, QNetworkProxy, QNetworkRepl
 
 
 from pivluma.local_assets import ready
+from pivluma.llama_forecast import FORECAST_TASK, forecast_request
 
 
 LOCAL_MODEL = "llama"
@@ -88,6 +89,12 @@ class LocalModel(QObject):
             self.process.waitForFinished(3000)
 
     def start(self, model, language, question, facts):
+        self.start_local(model, chat_request(model, language, question, facts))
+
+    def start_forecast(self, facts):
+        self.start_local(FORECAST_TASK, forecast_request(facts))
+
+    def start_local(self, model, payload):
         self.cancel()
         self.idle.stop()
         if not ready(self.root):
@@ -109,8 +116,8 @@ class LocalModel(QObject):
                 "--port", str(port), "--api-key", self.token, "--ctx-size", "8192",
                 "--parallel", "1", "--threads", "4", "--n-gpu-layers", "0", "--reasoning", "off",
             ])
-        body = json.dumps(chat_request(model, language, question, facts), ensure_ascii=False).encode()
-        self.wait_until_ready(self.generation, monotonic() + 30, body)
+        body = json.dumps(payload, ensure_ascii=False).encode()
+        self.wait_until_ready(self.generation, monotonic() + 30, body, model)
 
     def request(self, route, timeout):
         request = QNetworkRequest(QUrl(self.endpoint + route))
@@ -120,30 +127,30 @@ class LocalModel(QObject):
         request.setTransferTimeout(timeout)
         return request
 
-    def wait_until_ready(self, generation, deadline, body):
+    def wait_until_ready(self, generation, deadline, body, model):
         if generation != self.generation:
             return
         if monotonic() >= deadline or self.process.state() == QProcess.ProcessState.NotRunning:
             self.stop_engine()
-            self.completed.emit(LOCAL_MODEL, "")
+            self.completed.emit(model, "")
             return
         reply = self.network.get(self.request("/health", 2000))
         self.reply = reply
-        reply.finished.connect(lambda: self.engine_health(reply, generation, deadline, body))
+        reply.finished.connect(lambda: self.engine_health(reply, generation, deadline, body, model))
 
-    def engine_health(self, reply, generation, deadline, body):
+    def engine_health(self, reply, generation, deadline, body, model):
         reply.deleteLater()
         if reply is not self.reply:
             return
         self.reply = None
         if reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute) != 200:
-            QTimer.singleShot(250, self, lambda: self.wait_until_ready(generation, deadline, body))
+            QTimer.singleShot(250, self, lambda: self.wait_until_ready(generation, deadline, body, model))
             return
         request = self.request("/v1/chat/completions", 90000)
         request.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, "application/json")
         response = self.network.post(request, body)
         self.reply = response
-        response.finished.connect(lambda: self.finish(response, LOCAL_MODEL))
+        response.finished.connect(lambda: self.finish(response, model))
 
     def start_cloud(self, address, code, language, question, facts):
         self.cancel()

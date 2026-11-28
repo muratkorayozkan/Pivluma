@@ -14,7 +14,7 @@ try:
     from PySide6.QtCore import QPoint, QPointF, QSettings, Qt
     from PySide6.QtGui import QWheelEvent
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication, QMessageBox
+    from PySide6.QtWidgets import QApplication, QDialog, QLabel, QMessageBox, QPushButton
     from shiboken6 import delete
 except ModuleNotFoundError as error:
     if error.name != "PySide6":
@@ -23,6 +23,7 @@ except ModuleNotFoundError as error:
 
 from pivluma.data import PriceStore, sample_prices
 from pivluma.desktop import Dashboard
+from pivluma.dialogs import about_dialog
 from pivluma.update_ui import UpdateController
 
 
@@ -167,6 +168,54 @@ class DashboardTests(unittest.TestCase):
             window.close()
             delete(window)
             self.application.processEvents()
+
+    def test_upgrade_selects_installed_llama_once_then_preserves_manual_choice(self):
+        with tempfile.TemporaryDirectory() as folder:
+            window = Dashboard(Path(folder) / "data.sqlite")
+            try:
+                window.settings = QSettings(str(Path(folder) / "settings.ini"), QSettings.Format.IniFormat)
+                window.settings.setValue("analyst_model", "cloud")
+                with patch("pivluma.desktop.ready", return_value=True):
+                    window.restore_analyst_model()
+                    self.assertEqual(window.analyst_model, "llama")
+                    window.set_analyst_model("cloud")
+                    window.restore_analyst_model()
+                    self.assertEqual(window.analyst_model, "cloud")
+            finally:
+                window.close()
+                delete(window)
+
+    def test_about_copies_details_and_tracks_update_action(self):
+        window = Dashboard(Path("unused.sqlite3"))
+        try:
+            window.update_button.show()
+
+            def inspect(dialog):
+                button = next(button for button in dialog.findChildren(QPushButton)
+                              if button.text() == window.text("Copy version details"))
+                button.click()
+                self.assertIn("Pivluma", self.application.clipboard().text())
+                self.assertIn("Running version", self.application.clipboard().text())
+                window.update_button.setEnabled(False)
+                window.update_message = "Checking and preparing updates…"
+                window.render_update_status()
+                status = dialog.findChild(QLabel, "aboutUpdateStatus")
+                self.assertEqual(status.text(), window.update_message)
+                action = next(button for button in dialog.findChildren(QPushButton)
+                              if button.text() == window.update_button.text())
+                self.assertFalse(action.isEnabled())
+                window.update_button.setEnabled(True)
+                window.update_button.setText(window.text("Open update"))
+                window.update_message = "Update ready."
+                window.render_update_status()
+                self.assertEqual(action.text(), window.text("Open update"))
+                self.assertTrue(action.isEnabled())
+
+            with patch.object(QDialog, "exec", inspect):
+                about_dialog(window)
+        finally:
+            window.close()
+            delete(window)
 
     def test_local_model_is_the_default_only_after_installation(self):
         window = Dashboard(Path("unused.sqlite3"))
