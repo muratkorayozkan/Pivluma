@@ -12,7 +12,9 @@ from PySide6.QtWidgets import (
 
 from pivluma import __version__
 from pivluma.appearance import THEMES
-from pivluma.local_model import MODELS
+from pivluma.local_assets import ready, supported
+from pivluma.local_model import LOCAL_MODEL
+from pivluma.model_download import DownloadDialog
 from pivluma.updates import ROOT
 
 
@@ -39,10 +41,9 @@ def settings_dialog(window):
     themes.setCurrentIndex(max(0, themes.findData(window.theme)))
     form.addRow(window.text("Theme"), themes)
     model = QComboBox()
-    model.addItem(window.text("Built-in analyst"), "")
+    model.addItem(window.text("Built-in analyst"), "builtin")
     model.addItem(window.text("Cloud analyst"), "cloud")
-    for name in MODELS:
-        model.addItem(name, name)
+    model.addItem("llama.cpp · Qwen3 1.7B", LOCAL_MODEL)
     model.setCurrentIndex(max(0, model.findData(window.analyst_model)))
     form.addRow(window.text("Analyst model"), model)
     cloud_url = QLineEdit(window.cloud_url)
@@ -53,9 +54,20 @@ def settings_dialog(window):
     cloud_note = QLabel(window.text("Cloud mode sends your question and calculated facts to the configured server."))
     cloud_note.setWordWrap(True)
     form.addRow(cloud_note)
-    help_text = QLabel(window.text("Ollama models must be installed and running on this PC."))
-    help_text.setWordWrap(True)
-    form.addRow(help_text)
+    download = QPushButton(window.text("Download local model"))
+    download.setEnabled(supported() and not ready(window.local_model.root))
+    model.model().item(model.findData(LOCAL_MODEL)).setEnabled(ready(window.local_model.root))
+
+    def download_model():
+        DownloadDialog(window.local_model.root, window.text, dialog).exec()
+        if ready(window.local_model.root):
+            download.setEnabled(False)
+            model.model().item(model.findData(LOCAL_MODEL)).setEnabled(True)
+            model.setCurrentIndex(model.findData(LOCAL_MODEL))
+            window.set_analyst_model(LOCAL_MODEL)
+
+    download.clicked.connect(download_model)
+    form.addRow(download)
     _buttons(dialog, form, QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
     if dialog.exec() == QDialog.DialogCode.Accepted:
         window.change_theme(themes.currentData())

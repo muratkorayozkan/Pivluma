@@ -1,30 +1,40 @@
-"""Asynchronous client for a user-selected model on the local Ollama service."""
+"""Asynchronous clients for the managed llama.cpp process and cloud gateway."""
 
 import json
+import secrets
+import socket
+from time import monotonic
 from urllib.parse import urlsplit
 
-from PySide6.QtCore import QObject, QUrl, Signal
+from PySide6.QtCore import QObject, QProcess, QTimer, QUrl, Signal
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkProxy, QNetworkReply, QNetworkRequest
 
 
-MODELS = ("qwen3:1.7b", "qwen3:4b", "qwen3:8b")
-CHAT_URL = "http://127.0.0.1:11434/api/chat"
+from pivluma.local_assets import ready
+
+
+LOCAL_MODEL = "llama"
 
 
 def chat_request(model, language, question, facts):
-    if model not in MODELS:
+    if model != LOCAL_MODEL:
         raise ValueError("Unsupported local model.")
     instruction = (
-        "Explain the supplied market data clearly. Use only the provided facts and prices. "
-        "Keep the values, units, dates and limits unchanged. State when information is missing. "
-        "Do not suggest trades or imply a forecast is certain. Use "
+        "Answer only the question using the supplied facts. Use up to four concise lines. "
+        "Use final_forecast for the final estimate and its lower and upper bounds. "
+        "Copy values accurately, rounding only when requested. "
+        "Mention missing information only if it is necessary to answer the question. "
+        "Do not suggest trades or imply certainty. Reply in "
         + {"tr": "Turkish.", "zh": "Simplified Chinese."}.get(language, "English.")
     )
+    facts = dict(facts)
+    if forecast := facts.get("forecast"):
+        facts = {"final_forecast": forecast[-1], **facts}
     return {
         "model": model,
         "stream": False,
-        "think": False,
-        "options": {"temperature": .15, "num_predict": 260},
+        "temperature": 0,
+        "max_tokens": 300,
         "messages": [
             {"role": "system", "content": instruction},
             {"role": "user", "content": json.dumps({"question": question, "facts": facts}, ensure_ascii=False)},
@@ -46,29 +56,94 @@ def cloud_endpoint(address):
 class LocalModel(QObject):
     completed = Signal(str, str)
 
-    def __init__(self, parent=None):
+    def __init__(self, root, parent=None):
         super().__init__(parent)
+        self.root = root
+        self.process = QProcess(self)
+        self.process.setStandardOutputFile(QProcess.nullDevice())
+        self.process.setStandardErrorFile(QProcess.nullDevice())
+        self.idle = QTimer(self, singleShot=True, interval=120000)
+        self.idle.timeout.connect(self.stop_engine)
+        self.generation = 0
+        self.endpoint = ""
+        self.token = ""
         self.network = QNetworkAccessManager(self)
         self.network.setProxy(QNetworkProxy(QNetworkProxy.ProxyType.NoProxy))
         self.reply = None
         self.cloud_error = ""
 
     def cancel(self):
+        self.generation += 1
         active, self.reply = self.reply, None
         if active is not None:
             active.abort()
+        if self.process.state() != QProcess.ProcessState.NotRunning:
+            self.idle.start()
+
+    def stop_engine(self):
+        self.cancel()
+        self.idle.stop()
+        if self.process.state() != QProcess.ProcessState.NotRunning:
+            self.process.kill()
+            self.process.waitForFinished(3000)
 
     def start(self, model, language, question, facts):
         self.cancel()
-        request = QNetworkRequest(QUrl(CHAT_URL))
-        request.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, "application/json")
+        self.idle.stop()
+        if not ready(self.root):
+            self.completed.emit(model, "")
+            return
+        if self.process.state() == QProcess.ProcessState.NotRunning:
+            try:
+                with socket.socket() as listener:
+                    listener.bind(("127.0.0.1", 0))
+                    port = listener.getsockname()[1]
+            except OSError:
+                self.completed.emit(model, "")
+                return
+            self.endpoint = f"http://127.0.0.1:{port}"
+            self.token = secrets.token_urlsafe(32)
+            self.process.setWorkingDirectory(str(self.root))
+            self.process.start(str(self.root / "llama-server.exe"), [
+                "--model", str(self.root / "model.gguf"), "--host", "127.0.0.1",
+                "--port", str(port), "--api-key", self.token, "--ctx-size", "8192",
+                "--parallel", "1", "--threads", "4", "--n-gpu-layers", "0", "--reasoning", "off",
+            ])
+        body = json.dumps(chat_request(model, language, question, facts), ensure_ascii=False).encode()
+        self.wait_until_ready(self.generation, monotonic() + 30, body)
+
+    def request(self, route, timeout):
+        request = QNetworkRequest(QUrl(self.endpoint + route))
+        request.setRawHeader(b"Authorization", f"Bearer {self.token}".encode())
         request.setAttribute(QNetworkRequest.Attribute.RedirectPolicyAttribute,
                              QNetworkRequest.RedirectPolicy.ManualRedirectPolicy)
-        request.setTransferTimeout(90000)
-        body = json.dumps(chat_request(model, language, question, facts), ensure_ascii=False)
-        reply = self.network.post(request, body.encode())
+        request.setTransferTimeout(timeout)
+        return request
+
+    def wait_until_ready(self, generation, deadline, body):
+        if generation != self.generation:
+            return
+        if monotonic() >= deadline or self.process.state() == QProcess.ProcessState.NotRunning:
+            self.stop_engine()
+            self.completed.emit(LOCAL_MODEL, "")
+            return
+        reply = self.network.get(self.request("/health", 2000))
         self.reply = reply
-        reply.finished.connect(lambda: self.finish(reply, model))
+        reply.finished.connect(lambda: self.engine_health(reply, generation, deadline, body))
+
+    def engine_health(self, reply, generation, deadline, body):
+        reply.deleteLater()
+        if reply is not self.reply:
+            return
+        self.reply = None
+        if reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute) != 200:
+            QTimer.singleShot(250, self, lambda: self.wait_until_ready(generation, deadline, body))
+            return
+        request = self.request("/v1/chat/completions", 90000)
+        request.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, "application/json")
+        response = self.network.post(request, body)
+        self.reply = response
+        response.finished.connect(lambda: self.finish(response, LOCAL_MODEL))
 
     def start_cloud(self, address, code, language, question, facts):
         self.cancel()
@@ -106,7 +181,7 @@ class LocalModel(QObject):
             result = json.loads(bytes(reply.readAll()))["answer"].strip()
             if not result:
                 raise ValueError()
-        except (AttributeError, KeyError, TypeError, ValueError):
+        except (AttributeError, IndexError, KeyError, TypeError, ValueError):
             result = ""
         self.completed.emit("cloud", result)
 
@@ -121,9 +196,10 @@ class LocalModel(QObject):
             status = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
             if status != 200 or reply.bytesAvailable() > 262144:
                 raise ValueError()
-            result = json.loads(bytes(reply.readAll()))["message"]["content"].strip()
+            result = json.loads(bytes(reply.readAll()))["choices"][0]["message"]["content"].strip()
             if not result:
                 raise ValueError()
-        except (AttributeError, KeyError, TypeError, ValueError):
+        except (AttributeError, IndexError, KeyError, TypeError, ValueError):
             result = ""
+        self.idle.start()
         self.completed.emit(model, result)

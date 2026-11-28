@@ -3,6 +3,15 @@
 from pivluma.chinese import CHINESE
 
 TURKISH = {
+    "Download local model": "Yerel modeli indir",
+    "Local model download": "Yerel model indirme",
+    "Download llama.cpp and Qwen3 (1.31 GB). Allow 2 GB of free disk space.": "llama.cpp ve Qwen3 indirilecek (1,31 GB). 2 GB boş disk alanı ayırın.",
+    "Download": "İndir",
+    "Local model is ready.": "Yerel model hazır.",
+    "Downloading and verifying the local model…": "Yerel model indiriliyor ve doğrulanıyor…",
+    "Cancelling download…": "İndirme iptal ediliyor…",
+    "Download failed. Check the connection and available disk space.": "İndirme başarısız. Bağlantıyı ve boş disk alanını kontrol edin.",
+    "Local model unavailable. Check the llama.cpp download in Settings.": "Yerel modele ulaşılamadı. Ayarlar’daki llama.cpp indirmesini kontrol edin.",
     "Watchlist": "İzleme listesi",
     "Chart focus": "Grafiğe odaklan",
     "Remove {symbol}": "{symbol} listesinden kaldır",
@@ -88,11 +97,8 @@ TURKISH = {
     "adaptive": "Uyarlamalı",
     "Built-in analyst": "Yerleşik analist",
     "Local analyst model": "Yerel analist modeli",
-    "Ollama models must be installed and running on this PC.": "Ollama ve seçilen model bu bilgisayarda kurulu olmalıdır.",
     "Local model is preparing an explanation…": "Yerel model açıklama hazırlıyor…",
     "Local model ({model})": "Yerel model ({model})",
-    "Local model unavailable. Check that Ollama and the selected model are running.":
-        "Yerel modele ulaşılamadı. Ollama’nın çalıştığını ve seçilen modelin kurulu olduğunu kontrol edin.",
     "Chart": "Grafik",
     "Reset chart": "Grafiği sıfırla",
     "Close": "Kapanış",

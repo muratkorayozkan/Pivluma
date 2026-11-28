@@ -168,17 +168,35 @@ class DashboardTests(unittest.TestCase):
             delete(window)
             self.application.processEvents()
 
+    def test_local_model_is_the_default_only_after_installation(self):
+        window = Dashboard(Path("unused.sqlite3"))
+        try:
+            with patch("pivluma.desktop.ready", return_value=False):
+                window.set_analyst_model("")
+                self.assertEqual(window.analyst_model, "")
+                window.set_analyst_model("llama")
+                self.assertEqual(window.analyst_model, "")
+            with patch("pivluma.desktop.ready", return_value=True):
+                window.set_analyst_model("")
+                self.assertEqual(window.analyst_model, "llama")
+                window.set_analyst_model("builtin")
+                self.assertEqual(window.analyst_model, "")
+        finally:
+            window.close()
+            delete(window)
+
     def test_analyst_keeps_calculated_facts_when_local_model_is_unavailable(self):
         window = Dashboard(Path("unused.sqlite3"))
         try:
-            window.set_analyst_model("qwen3:4b")
+            with patch("pivluma.desktop.ready", return_value=True):
+                window.set_analyst_model("llama")
             with patch.object(window.local_model, "start") as start:
                 window.ask_topic("What is the forecast?")
             args = start.call_args.args
-            self.assertEqual(args[0], "qwen3:4b")
+            self.assertEqual(args[0], "llama")
             self.assertEqual(args[3]["forecast"][0]["price"], window.chart.result.forecast[0])
             self.assertEqual(args[3]["selected_forecast_model"], window.chart.result.model)
-            window.show_model_answer("qwen3:4b", "")
+            window.show_model_answer("llama", "")
             self.assertIn("5 observations ahead", window.reply.text())
             self.assertIn("Local model unavailable", window.reply.text())
         finally:

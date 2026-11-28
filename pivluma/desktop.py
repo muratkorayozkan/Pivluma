@@ -23,7 +23,8 @@ from pivluma.data import PriceStore, read_prices, sample_prices
 from pivluma.dialogs import about_dialog, axis_dialog, history_dialog, settings_dialog, shortcuts_dialog
 from pivluma.export import write_forecast
 from pivluma.forecast import NEWS_MODEL, TRAINING_WINDOW, analyze
-from pivluma.local_model import MODELS, LocalModel
+from pivluma.local_assets import ready
+from pivluma.local_model import LOCAL_MODEL, LocalModel
 from pivluma.localization import translate
 from pivluma.market import FX_SYMBOLS, OTHER_SYMBOLS, PUBLIC_SYMBOLS, MarketFeed
 from pivluma.news import NewsFeed, align_scores, read_news_scores
@@ -56,7 +57,7 @@ class Dashboard(QMainWindow):
         self.analyst_model = ""
         self.cloud_url = ""
         self.cloud_code = ""
-        self.local_model = LocalModel(self)
+        self.local_model = LocalModel(database.parent.resolve() / "local-ai-b12823", self)
         self.local_model.completed.connect(self.show_model_answer)
         self.localized = []
         self.market_message = "Twelve Data · Disconnected"
@@ -763,10 +764,12 @@ class Dashboard(QMainWindow):
             self.settings.setValue("cloud_url", self.cloud_url)
 
     def set_analyst_model(self, model):
-        self.local_model.cancel()
-        self.analyst_model = model if model in (*MODELS, "cloud") else ""
+        self.local_model.stop_engine()
+        if model not in ("builtin", "cloud", LOCAL_MODEL):
+            model = LOCAL_MODEL if ready(self.local_model.root) else ""
+        self.analyst_model = "" if model == "builtin" or (model == LOCAL_MODEL and not ready(self.local_model.root)) else model
         if self.settings is not None:
-            self.settings.setValue("analyst_model", self.analyst_model)
+            self.settings.setValue("analyst_model", model)
 
     def ask_analyst(self):
         self.local_model.cancel()
@@ -834,11 +837,15 @@ class Dashboard(QMainWindow):
             )
         else:
             explanation = (
-                self.text("Local model ({model})", model=model) + "\n" + response
-                if response else self.text("Local model unavailable. Check that Ollama and the selected model are running.")
+                self.text("Local model ({model})", model="Qwen3 1.7B") + "\n" + response
+                if response else self.text("Local model unavailable. Check the llama.cpp download in Settings.")
             )
         self.reply.setText(self.model_calculation + "\n\n" + explanation)
         self.animate_reply()
+
+    def closeEvent(self, event):
+        self.local_model.stop_engine()
+        super().closeEvent(event)
 
     def export_forecast(self):
         result = self.chart.result

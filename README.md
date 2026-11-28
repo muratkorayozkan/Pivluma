@@ -6,7 +6,7 @@ Pivluma is a Windows desktop application in development for financial forecastin
 
 ## Current release
 
-[Pivluma 0.16.0](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.16.0) is the current release. Download the [portable Windows x64 ZIP](https://github.com/muratkorayozkan/Pivluma/releases/latest), extract it, and run Pivluma.exe. The themed Windows Setup EXE is available on the same release page, alongside the standalone MSI. Setup starts with the Windows light or dark preference and offers a theme switch. It installs to `C:\Program Files\Pivluma` with a Start menu entry. Its desktop shortcut option is selected by default and can be cleared during setup. Windows requests administrator approval for the MSI.
+[Pivluma 0.17.0](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.17.0) is the current release. Download the [portable Windows x64 ZIP](https://github.com/muratkorayozkan/Pivluma/releases/latest), extract it, and run Pivluma.exe. The themed Windows Setup EXE is available on the same release page, alongside the standalone MSI. Setup starts with the Windows light or dark preference and offers a theme switch. It installs to `C:\Program Files\Pivluma` with a Start menu entry. Its desktop shortcut option is selected by default and can be cleared during setup. Windows requests administrator approval for the MSI.
 
 The forecasting engine compares a last-price baseline, linear trend, damped trend, and exponentially smoothed level. At each origin it uses only completed prior forecasts to select a model, using recent errors at several lead times. The dashboard reports the selected model and compares the full selection strategy against the last-price baseline on the same walk-forward origins. Forecast intervals use empirical errors for each step.
 
@@ -57,7 +57,7 @@ python -m venv .venv
 .\scripts\build-windows.ps1 -Python .\.venv\Scripts\python.exe
 ```
 
-The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.16.0-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
+The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.17.0-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
 
 
 ## Connect live market data
@@ -73,7 +73,7 @@ The chart uses daily REST history. If daily history is unavailable, Pivluma stil
 Provider references: [Kraken daily history](https://docs.kraken.com/api/docs/rest-api/get-ohlc-data), [Kraken ticker stream](https://docs.kraken.com/api/docs/websocket-v2/ticker), [REST API](https://twelvedata.com/docs), [WebSocket API](https://twelvedata.com/docs/websocket/websocket-getting-started), and [plans](https://twelvedata.com/pricing).
 
 
-To build the themed Setup EXE and standalone MSI after building the portable package, run `./scripts/build-setup.ps1 -WixBin PATH_TO_WIX_BINARIES` with the WiX 3.14.1 binaries. This creates `dist/Pivluma-0.16.0-Windows-Setup.exe` and `dist/Pivluma-0.16.0-Windows-Setup.msi`.
+To build the themed Setup EXE and standalone MSI after building the portable package, run `./scripts/build-setup.ps1 -WixBin PATH_TO_WIX_BINARIES` with the WiX 3.14.1 binaries. This creates `dist/Pivluma-0.17.0-Windows-Setup.exe` and `dist/Pivluma-0.17.0-Windows-Setup.msi`.
 
 ## Cloud analyst
 
@@ -89,13 +89,11 @@ The forecast matches each historical price observation to the previous calendar 
 
 Use the analyst topic buttons or enter an English, Turkish, or Simplified Chinese question. **Visible period** summarizes the closing prices currently shown in the chart. **Selected point** explains the highlighted historical or forecast observation. Both shortcuts follow the chart as you change the selected point or visible period. The moving average uses the last 20 closes (or all available closes if fewer). Replies use the selected interface language. Try “How did the price move?”, “What is the forecast?”, or “How accurate was the model?”. Replies use the active series, date range, and forecast horizon. The built-in analyst matches supported topics and computes answers offline.
 
-For natural-language explanations, install [Ollama for Windows](https://ollama.com/download/windows), run it locally, and pull one of the supported [Qwen3 models](https://ollama.com/library/qwen3), for example:
+For natural-language explanations, optionally download the local llama.cpp engine and Qwen3 1.7B (4-bit) by selecting the checkbox in **Windows Setup EXE** or choosing **Settings → Download local model**. The portable and standalone MSI builds support the in-app download. The download is approximately 1.31 GB and needs 2 GB of free disk space. It is available for Windows x64 and uses the CPU. Pivluma verifies both downloads and stores them in the current user's Pivluma application data folder. Only the package and model download require internet access.
 
-```powershell
-ollama pull qwen3:4b
-```
+Pivluma defaults to the local model when installed and to the built-in analyst otherwise. You can explicitly choose the built-in or cloud analyst in Settings. The built-in calculations remain visible above generated explanations. The local engine runs on loopback, starts on demand, stops after two idle minutes, and shuts down when Pivluma closes.
 
-Select the installed model in **Settings → Local analyst model**. Pivluma sends the question and calculated facts only to the Ollama service at `127.0.0.1:11434`. The model is downloaded separately. Generated explanations appear below the calculated answer, which stays available if the model cannot respond.
+[llama.cpp release](https://github.com/ggml-org/llama.cpp/releases/tag/b12823) · [Qwen3 model](https://huggingface.co/ggml-org/Qwen3-1.7B-GGUF)
 
 
 ## Try offline analysis

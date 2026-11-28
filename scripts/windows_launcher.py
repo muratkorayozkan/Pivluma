@@ -4,10 +4,12 @@ import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QStandardPaths, QTimer
+from PySide6.QtWidgets import QApplication, QDialog
 from shiboken6 import delete
 
 from pivluma.desktop import Dashboard, main
+from pivluma.model_download import DownloadDialog
 from pivluma.updates import check_update, prepare_update
 
 
@@ -31,7 +33,7 @@ def smoke_test() -> int:
             not chart_clear or window.scroll_area.verticalScrollBar().maximum() <= 0
             or
             window.windowIcon().isNull() or window.chart.grab().isNull()
-            or "7 observations ahead" not in english_reply or "7 gözlem" not in window.reply.text()
+            or "7 observations ahead" not in english_reply or "7 gÃ¶zlem" not in window.reply.text()
         )
     finally:
         window.close()
@@ -40,6 +42,14 @@ def smoke_test() -> int:
 
 
 if __name__ == "__main__":
+    if sys.argv[1:] == ["--download-local-model"]:
+        app = QApplication(["Pivluma"])
+        app.setApplicationName("Pivluma")
+        directory = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation))
+        dialog = DownloadDialog(directory / "local-ai-b12823", lambda message: message)
+        if not dialog.worker.success:
+            QTimer.singleShot(0, dialog.start)
+        raise SystemExit(0 if dialog.exec() == QDialog.DialogCode.Accepted else 1)
     if sys.argv[1:] == ["--smoke-test"]:
         raise SystemExit(smoke_test())
     if sys.argv[1:] == ["--smoke-update"]:

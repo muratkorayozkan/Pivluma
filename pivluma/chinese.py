@@ -1,6 +1,15 @@
 """Simplified Chinese desktop translations."""
 
 CHINESE = {
+    "Download local model": "下载本地模型",
+    "Local model download": "本地模型下载",
+    "Download llama.cpp and Qwen3 (1.31 GB). Allow 2 GB of free disk space.": "下载 llama.cpp 和 Qwen3（1.31 GB）。请预留 2 GB 可用磁盘空间。",
+    "Download": "下载",
+    "Local model is ready.": "本地模型已就绪。",
+    "Downloading and verifying the local model…": "正在下载并验证本地模型…",
+    "Cancelling download…": "正在取消下载…",
+    "Download failed. Check the connection and available disk space.": "下载失败，请检查网络连接和可用磁盘空间。",
+    "Local model unavailable. Check the llama.cpp download in Settings.": "本地模型不可用。请在设置中检查 llama.cpp 下载。",
     "Watchlist": "自选列表",
     "Chart focus": "专注图表",
     "Remove {symbol}": "移除 {symbol}",
@@ -74,10 +83,8 @@ CHINESE = {
     "adaptive": "自适应",
     "Built-in analyst": "内置分析师",
     "Local analyst model": "本地分析模型",
-    "Ollama models must be installed and running on this PC.": "请在此电脑上安装并运行 Ollama 和所选模型。",
     "Local model is preparing an explanation…": "本地模型正在生成说明…",
     "Local model ({model})": "本地模型 ({model})",
-    "Local model unavailable. Check that Ollama and the selected model are running.": "无法访问本地模型。请确认 Ollama 正在运行且所选模型已安装。",
     "Chart": "图表",
     "Reset chart": "重置图表",
     "Close": "收盘价",
