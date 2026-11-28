@@ -24,7 +24,7 @@ from pivluma.export import write_forecast
 from pivluma.forecast import NEWS_MODEL, TRAINING_WINDOW, analyze
 from pivluma.local_model import MODELS, LocalModel
 from pivluma.localization import translate
-from pivluma.market import OTHER_SYMBOLS, PUBLIC_SYMBOLS, MarketFeed
+from pivluma.market import FX_SYMBOLS, OTHER_SYMBOLS, PUBLIC_SYMBOLS, MarketFeed
 from pivluma.news import NewsFeed, align_scores, read_news_scores
 from pivluma.update_ui import UpdateController
 
@@ -117,7 +117,7 @@ class Dashboard(QMainWindow):
         self.symbol_picker.setEditable(True)
         self.symbol_picker.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.symbol = self.symbol_picker.lineEdit()
-        instruments = {**PUBLIC_SYMBOLS, **OTHER_SYMBOLS}
+        instruments = {**PUBLIC_SYMBOLS, **FX_SYMBOLS, **OTHER_SYMBOLS}
         for code, name in instruments.items():
             index = self.symbol_picker.count()
             self.symbol_picker.addItem(f"{self.text(name)} ({code})", code)
@@ -558,8 +558,10 @@ class Dashboard(QMainWindow):
             if symbol not in PUBLIC_SYMBOLS:
                 key = os.environ.get("TWELVE_DATA_API_KEY", "").strip()
                 if not key or not key.isascii() or not key.isprintable() or " " in key:
-                    self.set_market_status("Twelve Data · Access is not configured on this PC.")
-                    raise ValueError(self.text("Select a Kraken symbol or configure Twelve Data access."))
+                    if symbol not in FX_SYMBOLS:
+                        self.set_market_status("Daily data unavailable. Choose a crypto or FX symbol, or import a CSV.")
+                        return
+                    key = None
             self.market.start(symbol, key)
         except ValueError as error:
             self.status.setText(str(error))
@@ -573,9 +575,11 @@ class Dashboard(QMainWindow):
         if symbol != self.live_symbol:
             return
         if len(prices) <= TRAINING_WINDOW + 9:
-            self.status.setText(self.text("Twelve Data returned too few daily observations for a forecast."))
+            self.status.setText(self.text("Too few daily observations for a forecast."))
             return
-        self.set_series(self.market.with_provider("Twelve Data daily history"), prices, symbol)
+        source = ("ECB daily reference rates" if self.market.provider == "ECB"
+                  else self.market.with_provider("Twelve Data daily history"))
+        self.set_series(source, prices, symbol)
         self.fetch_news()
 
     def receive_quote(self, price, timestamp):

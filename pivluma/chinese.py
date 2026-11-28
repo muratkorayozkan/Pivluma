@@ -1,6 +1,12 @@
 """Simplified Chinese desktop translations."""
 
 CHINESE = {
+    "ECB · Loading daily history": "ECB · 正在加载历史日线",
+    "ECB · Daily reference rates": "ECB · 每日参考汇率",
+    "ECB · Daily reference rates unavailable.": "ECB · 无法获取每日参考汇率。",
+    "ECB daily reference rates": "ECB 每日参考汇率",
+    "Daily data unavailable. Choose a crypto or FX symbol, or import a CSV.": "日线数据不可用。请选择加密货币或外汇品种，或导入 CSV。",
+    "Too few daily observations for a forecast.": "每日数据不足，无法预测。",
     "Checking": "正在检查",
     "Up to date": "已是最新版本",
     "Available": "有可用更新",

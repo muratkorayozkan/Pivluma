@@ -24,6 +24,29 @@ class MarketTests(unittest.TestCase):
         connect.assert_called_once_with("AAPL", "test-key")
         self.assertIn("History request failed", statuses[-1])
 
+    def test_ecb_history_without_credentials_computes_cross_rates(self):
+        feed = MarketFeed()
+        reply = Mock()
+        reply.error.return_value = QNetworkReply.NetworkError.NoError
+        reply.readAll.return_value = b"""<root xmlns="urn:ecb"><Cube>
+            <Cube time="2026-01-02"><Cube currency="USD" rate="2"/><Cube currency="TRY" rate="80"/></Cube>
+            <Cube time="2026-01-01"><Cube currency="USD" rate="2"/><Cube currency="TRY" rate="78"/></Cube>
+        </Cube></root>"""
+        feed.network = Mock()
+        feed.network.get.return_value = reply
+        histories = []
+        feed.history.connect(lambda symbol, prices: histories.append((symbol, prices)))
+        with patch.object(feed, "open_stream") as stream:
+            feed.start("USD/TRY", None)
+            request = feed.network.get.call_args.args[0]
+            self.assertEqual(request.url().host(), "www.ecb.europa.eu")
+            self.assertFalse(request.hasRawHeader("Authorization"))
+            reply.finished.connect.call_args.args[0]()
+        self.assertEqual(feed.provider, "ECB")
+        self.assertEqual(histories[0][0], "USD/TRY")
+        self.assertEqual([price.close for price in histories[0][1]], [39, 40])
+        stream.assert_not_called()
+
     def test_kraken_history_omits_incomplete_daily_candle(self):
         rows = kraken_history_rows({"result": {
             "last": 1700086400,

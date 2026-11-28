@@ -3,6 +3,7 @@
 import json
 from datetime import date, datetime, timezone
 from math import isfinite
+from xml.etree import ElementTree
 
 from PySide6.QtCore import QObject, QTimer, QUrl, QUrlQuery, Signal
 from PySide6.QtNetwork import QAbstractSocket, QNetworkAccessManager, QNetworkReply, QNetworkRequest
@@ -15,6 +16,7 @@ HISTORY_URL = "https://api.twelvedata.com/time_series"
 QUOTES_URL = "wss://ws.twelvedata.com/v1/quotes/price"
 REST_QUOTE_URL = "https://api.twelvedata.com/quote"
 KRAKEN_HISTORY_URL = "https://api.kraken.com/0/public/OHLC"
+ECB_HISTORY_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.xml"
 KRAKEN_QUOTES_URL = "wss://ws.kraken.com/v2"
 
 PUBLIC_ASSETS = {
@@ -35,10 +37,29 @@ OTHER_SYMBOLS = {
     "AMZN": "Amazon", "GOOGL": "Alphabet", "META": "Meta Platforms", "AMD": "AMD",
     "NFLX": "Netflix", "JPM": "JPMorgan Chase", "V": "Visa", "WMT": "Walmart",
     "SPY": "SPDR S&P 500 ETF", "QQQ": "Invesco QQQ", "DIA": "SPDR Dow Jones ETF",
+}
+FX_SYMBOLS = {
     "EUR/USD": "Euro / US dollar", "USD/TRY": "US dollar / Turkish lira",
     "GBP/USD": "British pound / US dollar", "USD/JPY": "US dollar / Japanese yen",
     "USD/CHF": "US dollar / Swiss franc", "AUD/USD": "Australian dollar / US dollar",
 }
+
+
+def ecb_history_rows(body, symbol):
+    base, quote = symbol.split("/")
+    days = {}
+    for snapshot in ElementTree.fromstring(body).iterfind(".//{*}Cube[@time]"):
+        rates = {row.attrib["currency"]: float(row.attrib["rate"]) for row in snapshot}
+        rates["EUR"] = 1.0
+        if base not in rates or quote not in rates:
+            continue
+        if not all(isfinite(rates[currency]) and rates[currency] > 0 for currency in (base, quote)):
+            continue
+        day = date.fromisoformat(snapshot.attrib["time"])
+        days[day] = Price(day, rates[quote] / rates[base])
+    if not days:
+        raise ValueError("ECB returned no daily reference rates.")
+    return [days[day] for day in sorted(days)[-240:]]
 
 
 def history_rows(payload):
@@ -130,6 +151,15 @@ class MarketFeed(QObject):
 
     def start(self, symbol, key):
         self.stop()
+        if key is None and symbol in FX_SYMBOLS:
+            self.provider = "ECB"
+            request = QNetworkRequest(QUrl(ECB_HISTORY_URL))
+            request.setTransferTimeout(15000)
+            reply = self.network.get(request)
+            self.pending = reply
+            reply.finished.connect(lambda: self.finish_ecb_history(reply, symbol))
+            self.report("Twelve Data · Loading daily history")
+            return
         self.provider = "Kraken" if key is None else "Twelve Data"
         url = QUrl(KRAKEN_HISTORY_URL if key is None else HISTORY_URL)
         query = QUrlQuery()
@@ -147,6 +177,21 @@ class MarketFeed(QObject):
         self.pending = reply
         reply.finished.connect(lambda: self.finish_history(reply, symbol, key))
         self.report("Twelve Data · Loading daily history")
+
+    def finish_ecb_history(self, reply, symbol):
+        reply.deleteLater()
+        if reply is not self.pending:
+            return
+        self.pending = None
+        try:
+            if reply.error() != QNetworkReply.NetworkError.NoError:
+                raise ValueError("ECB request failed")
+            prices = ecb_history_rows(bytes(reply.readAll()), symbol)
+        except (ElementTree.ParseError, KeyError, ValueError):
+            self.status.emit("ECB · Daily reference rates unavailable.")
+            return
+        self.history.emit(symbol, prices)
+        self.status.emit("ECB · Daily reference rates")
 
     def finish_history(self, reply, symbol, key):
         reply.deleteLater()

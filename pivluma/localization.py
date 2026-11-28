@@ -3,6 +3,12 @@
 from pivluma.chinese import CHINESE
 
 TURKISH = {
+    "ECB · Loading daily history": "ECB · Günlük geçmiş yükleniyor",
+    "ECB · Daily reference rates": "ECB · Günlük referans kurları",
+    "ECB · Daily reference rates unavailable.": "ECB · Günlük referans kurları alınamadı.",
+    "ECB daily reference rates": "ECB günlük referans kurları",
+    "Daily data unavailable. Choose a crypto or FX symbol, or import a CSV.": "Günlük veri alınamadı. Kripto veya döviz sembolü seçin ya da CSV içe aktarın.",
+    "Too few daily observations for a forecast.": "Tahmin için yeterli günlük gözlem yok.",
     "Checking": "Denetleniyor",
     "Up to date": "Güncel",
     "Available": "Güncelleme var",

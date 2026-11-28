@@ -12,3 +12,11 @@ Publish this container behind an HTTPS reverse proxy on a host you control. The 
 With the secret configured in the runtime environment, run `python -m server.smoke` from the repository root to verify a real OpenAI response using synthetic data. The command prints only the outcome or HTTP status.
 
 The gateway sends only the question and calculated facts from the desktop request to OpenAI, with response storage disabled. The app does not send price CSV files, provider keys, or credentials for the user's machine. Do not log authorization headers or request bodies at the reverse proxy.
+
+## Hosting on Render
+
+Use a paid Render Web Service for a single deployed instance with a persistent disk. Connect the GitHub repository and select `main`, Docker, and `server` as the root directory. Add a writable persistent disk at `/data`, set `PORT=8080`, and use `/health` as the health check. Set the gateway secrets in Render's environment settings. The service's HTTPS address on `onrender.com` is the desktop's base URL. Render hosting and OpenAI usage are billed separately.
+
+After deployment, check `GET /health` and submit a synthetic analyst request from the desktop using an issued access code. Confirm that a request with an invalid code is rejected. Record the published base URL before enabling it as a desktop default.
+
+[Render web services](https://render.com/docs/web-services) · [Render persistent disks](https://render.com/docs/disks) · [Render pricing](https://render.com/pricing)

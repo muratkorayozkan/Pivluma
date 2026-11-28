@@ -6,11 +6,11 @@ Pivluma is a Windows desktop application in development for financial forecastin
 
 ## Current release
 
-[Pivluma 0.15.0](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.15.0) is the current release. Download the [portable Windows x64 ZIP](https://github.com/muratkorayozkan/Pivluma/releases/latest), extract it, and run Pivluma.exe. The themed Windows Setup EXE is available on the same release page, alongside the standalone MSI. Setup starts with the Windows light or dark preference and offers a theme switch. It installs to `C:\Program Files\Pivluma` with a Start menu entry. Its desktop shortcut option is selected by default and can be cleared during setup. Windows requests administrator approval for the MSI.
+[Pivluma 0.15.1](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.15.1) is the current release. Download the [portable Windows x64 ZIP](https://github.com/muratkorayozkan/Pivluma/releases/latest), extract it, and run Pivluma.exe. The themed Windows Setup EXE is available on the same release page, alongside the standalone MSI. Setup starts with the Windows light or dark preference and offers a theme switch. It installs to `C:\Program Files\Pivluma` with a Start menu entry. Its desktop shortcut option is selected by default and can be cleared during setup. Windows requests administrator approval for the MSI.
 
 The forecasting engine compares a last-price baseline, linear trend, damped trend, and exponentially smoothed level. At each origin it uses only completed prior forecasts to select a model, using recent errors at several lead times. The dashboard reports the selected model and compares the full selection strategy against the last-price baseline on the same walk-forward origins. Forecast intervals use empirical errors for each step.
 
-The desktop dashboard and built-in analyst support English, Turkish, and Simplified Chinese. Kraken public crypto data and configured Twelve Data feeds are available. A portable Windows package can be built from source. Live verification with a Twelve Data account is pending.
+The desktop dashboard and built-in analyst support English, Turkish, and Simplified Chinese. Kraken public crypto data and ECB daily reference rates work without account setup. A configured Twelve Data feed can extend coverage. A portable Windows package can be built from source. Live verification with a Twelve Data account is pending.
 
 ## Run the desktop app
 
@@ -53,21 +53,23 @@ python -m venv .venv
 .\scripts\build-windows.ps1 -Python .\.venv\Scripts\python.exe
 ```
 
-The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.15.0-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
+The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.15.1-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
 
 
 ## Connect live market data
 
 Choose an instrument from the **Symbol** drop-down to switch the live chart automatically, or type a single code and press Enter. The live feed changes when you choose a symbol. Choose the same symbol again to retry a failed connection. Forecasting and export become available once sufficient history for the selected symbol arrives.
 
-The symbol picker includes 42 Kraken crypto pairs against USD or EUR, including BTC, ETH, ADA, AVAX, LINK, LTC, and other assets. These connect directly to Kraken public market data without an account. The picker also lists more stocks, ETFs, and FX pairs. Other symbols use Twelve Data if the installation already supplies `TWELVE_DATA_API_KEY` in the process environment and the account permits display for that symbol. The app never prompts for a key. On Windows, open **Edit environment variables for your account** from Start, add a new user variable named `TWELVE_DATA_API_KEY`, and set its value to the key from your Twelve Data dashboard. Close and reopen Pivluma so it reads the updated environment.
+The symbol picker includes public Kraken crypto pairs against USD or EUR and six FX pairs. With a standard installation, Kraken supplies crypto history and quotes and the [European Central Bank](https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html) supplies daily FX reference rates. ECB rates are published on working days and are labeled as reference rates. When both currencies differ from EUR, Pivluma computes the cross rate from their EUR rates.
+
+For installations managed by a data provider or administrator, an optional `TWELVE_DATA_API_KEY` in the process environment enables supported equity, ETF and FX data under the provider account's display rights. The public installer requires no key. You can also import equity and ETF history from CSV.
 
 The chart uses daily REST history. If daily history is unavailable, Pivluma still tries the quote subscription and displays the history error separately from the stream state. The WebSocket quote is displayed separately in the Windows local time zone, with its UTC offset and marked as the last received quote after two minutes. Disconnecting keeps the latest quote visible and labels it as the last received quote. Switching to a sample or CSV series closes the live connection and clears the quote. The WebSocket connection and subscription acknowledgement have a combined 15-second deadline. If the provider rejects the subscription or the deadline expires, Twelve Data falls back to a REST quote when available. The app polls once per minute and labels the result as a one-minute bar. For other providers, reselect the symbol to retry. Once the subscription is accepted, the app can wait for a quote while the market is quiet. Sample data and CSV analysis work offline.
 
 Provider references: [Kraken daily history](https://docs.kraken.com/api/docs/rest-api/get-ohlc-data), [Kraken ticker stream](https://docs.kraken.com/api/docs/websocket-v2/ticker), [REST API](https://twelvedata.com/docs), [WebSocket API](https://twelvedata.com/docs/websocket/websocket-getting-started), and [plans](https://twelvedata.com/pricing).
 
 
-To build the themed Setup EXE and standalone MSI after building the portable package, run `./scripts/build-setup.ps1 -WixBin PATH_TO_WIX_BINARIES` with the WiX 3.14.1 binaries. This creates `dist/Pivluma-0.15.0-Windows-Setup.exe` and `dist/Pivluma-0.15.0-Windows-Setup.msi`.
+To build the themed Setup EXE and standalone MSI after building the portable package, run `./scripts/build-setup.ps1 -WixBin PATH_TO_WIX_BINARIES` with the WiX 3.14.1 binaries. This creates `dist/Pivluma-0.15.1-Windows-Setup.exe` and `dist/Pivluma-0.15.1-Windows-Setup.msi`.
 
 ## Cloud analyst
 
