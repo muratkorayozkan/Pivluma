@@ -212,7 +212,7 @@ class DashboardTests(unittest.TestCase):
             controller = UpdateController(window, window.update_button, Path("Versions"), settings)
             path = Path("Versions/0.6.0-0123456789abcdef0123456789abcdef/Pivluma.exe")
             controller.finished("Update ready.", ("0.6.0", path))
-            self.assertIn("Update ready", window.update_label.text())
+            self.assertIn("Update ready", window.update_icon.toolTip())
             with patch("pivluma.update_ui.QProcess.startDetached", return_value=(True, 123)) as launch:
                 with patch("pivluma.update_ui.QMessageBox.question", return_value=QMessageBox.StandardButton.No):
                     controller.activate()
@@ -273,7 +273,7 @@ class DashboardTests(unittest.TestCase):
             delete(window)
             self.application.processEvents()
 
-    def test_theme_updates_chart_and_update_status_is_below_the_button(self):
+    def test_theme_updates_chart_and_update_status_is_beside_the_button(self):
         window = Dashboard(Path("unused.sqlite3"))
         try:
             window.settings = Mock()
@@ -282,12 +282,19 @@ class DashboardTests(unittest.TestCase):
             self.assertNotEqual(window.chart.colors, original_colors)
             window.settings.setValue.assert_called_once_with("theme", "light-mint")
             window.update_button.show()
-            window.update_label.setText("Update ready.")
-            window.update_label.show()
+            window.update_message = "Update ready."
+            window.render_update_status()
             window.show()
             self.application.processEvents()
-            self.assertLess(window.update_button.geometry().bottom(), window.update_label.geometry().top())
-            self.assertEqual(window.update_button.geometry().right(), window.update_label.geometry().right())
+            self.assertEqual(window.update_label.text(), "Available")
+            self.assertLess(window.update_button.geometry().right(), window.update_icon.geometry().left())
+            self.assertLessEqual(abs(window.update_button.geometry().center().y()
+                                     - window.update_icon.geometry().center().y()), 1)
+            window.language_picker.setCurrentIndex(2)
+            self.assertIn("合成示例", window.dataset.text())
+            self.assertEqual(window.update_label.text(), "有可用更新")
+            window.ask_topic("What is the forecast?")
+            self.assertIn("第 5 步", window.reply.text())
         finally:
             window.close()
             delete(window)

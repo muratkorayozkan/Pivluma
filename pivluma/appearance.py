@@ -61,6 +61,8 @@ def stylesheet(colors):
         }}
         QProgressBar {{ background: {surface}; border: 0; border-radius: 2px; }}
         QProgressBar::chunk {{ background: {accent}; border-radius: 2px; }}
+        QPushButton[headerAction="true"] {{ padding: 5px 6px; }}
+        QLabel#updateStatus {{ font-size: 12px; color: {accent}; }}
         QPushButton:hover, QPushButton:focus, QLineEdit:focus, QSpinBox:focus {{
             border-color: {accent};
         }}

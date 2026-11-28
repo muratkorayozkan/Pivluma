@@ -1,6 +1,18 @@
 """User-facing desktop translations."""
 
+from pivluma.chinese import CHINESE
+
 TURKISH = {
+    "Checking": "Denetleniyor",
+    "Up to date": "Güncel",
+    "Available": "Güncelleme var",
+    "Check failed": "Denetim başarısız",
+    "GDELT news tone (cached)": "GDELT haber tonu (önbellek)",
+    "Alternative.me BTC sentiment": "Alternative.me BTC duyarlılığı",
+    "Loading BTC sentiment from Alternative.me…": "Alternative.me BTC duyarlılığı yükleniyor…",
+    "Research-adjusted baseline": "Araştırmayla ayarlanan referans",
+    "Research model selected": "Araştırma modeli seçildi",
+    "{source} · {count} matched research/return pairs · {mode}": "{source} · {count} araştırma/getiri eşleşmesi · {mode}",
     "Twelve Data · Streaming unavailable. Checking REST quote.": "Twelve Data · Akış kullanılamıyor. REST kotasyonu denetleniyor.",
     "Twelve Data · REST quota reached.": "Twelve Data · REST kotası doldu.",
     "Twelve Data · REST quote access denied for this key or plan.": "Twelve Data · Bu anahtar veya planla REST kotasyonuna erişim yok.",
@@ -201,9 +213,10 @@ TURKISH = {
 
 
 def translate(language: str, message: str) -> str:
-    if language != "tr":
+    table = {"tr": TURKISH, "zh": CHINESE}.get(language)
+    if table is None:
         return message
     if message.startswith("Kraken ·"):
-        translated = TURKISH.get(message.replace("Kraken", "Twelve Data", 1))
+        translated = table.get(message.replace("Kraken", "Twelve Data", 1))
         return translated.replace("Twelve Data", "Kraken", 1) if translated else message
-    return TURKISH.get(message, message)
+    return table.get(message, message)

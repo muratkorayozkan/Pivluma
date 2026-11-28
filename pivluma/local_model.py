@@ -18,7 +18,7 @@ def chat_request(model, language, question, facts):
         "Explain the supplied market data clearly. Use only the provided facts and prices. "
         "Keep the values, units, dates and limits unchanged. State when information is missing. "
         "Do not suggest trades or imply a forecast is certain. Use "
-        + ("Turkish." if language == "tr" else "English.")
+        + {"tr": "Turkish.", "zh": "Simplified Chinese."}.get(language, "English.")
     )
     return {
         "model": model,

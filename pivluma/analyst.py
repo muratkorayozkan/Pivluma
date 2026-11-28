@@ -10,6 +10,8 @@ from pivluma.localization import translate
 
 
 def answer(question: str, label: str, prices: Sequence[Price], result: Analysis, language: str = "en") -> str:
+    if language == "zh":
+        return answer_chinese(question, label, prices, result)
     words = set(re.findall(r"[^\W\d_]+", question.casefold()))
     first, latest = prices[0], prices[-1]
     turkish = language == "tr"
@@ -18,12 +20,12 @@ def answer(question: str, label: str, prices: Sequence[Price], result: Analysis,
     model = translate(language, result.model)
     if words & {"news", "headlines", "sentiment", "haber", "haberler", "duygu"}:
         if turkish:
-            detail = ("Son tahminde haber modeli seçildi." if result.model == NEWS_MODEL
+            detail = ("Son tahminde araştırma modeli seçildi." if result.model == NEWS_MODEL
                       else "Son tahminde fiyat modeli seçildi.")
-            return f"{context}\nHaber tonu ve sonraki getiri için {result.news_pairs} eşleşme var. {detail}"
-        detail = ("The news model was selected for the current forecast." if result.model == NEWS_MODEL
+            return f"{context}\nAraştırma sinyali ve sonraki getiri için {result.news_pairs} eşleşme var. {detail}"
+        detail = ("The research model was selected for the current forecast." if result.model == NEWS_MODEL
                   else "A price-only model was selected for the current forecast.")
-        return f"{context}\nThere are {result.news_pairs} matched news-tone and subsequent-return pairs. {detail}"
+        return f"{context}\nThere are {result.news_pairs} matched research-signal and subsequent-return pairs. {detail}"
     if "ortalama" in words or {"moving", "average"} <= words or "sma" in words:
         closes = [price.close for price in prices[-TRAINING_WINDOW:]]
         average = mean(closes)
@@ -91,3 +93,30 @@ def answer(question: str, label: str, prices: Sequence[Price], result: Analysis,
     if turkish:
         return "Fiyat hareketi, tahmin veya hareketli ortalama veya geçmiş test performansı hakkında soru sorabilirsiniz."
     return "Ask about one of the supported topics: price movement, forecast, moving average, or backtest performance."
+
+
+
+def answer_chinese(question, label, prices, result):
+    first, latest = prices[0], prices[-1]
+    period = f"{label} | {first.day} 至 {latest.day}"
+    question = question.casefold()
+    if any(term in question for term in ("新闻", "情绪", "研究", "news")):
+        mode = "研究信号模型" if result.model == NEWS_MODEL else "价格模型"
+        return f"{period}\n研究信号与后续收益共匹配 {result.news_pairs} 组。当前预测采用{mode}。"
+    if any(term in question for term in ("移动平均", "均线", "moving average", "sma")):
+        values = [price.close for price in prices[-TRAINING_WINDOW:]]
+        average = mean(values)
+        return (f"{period}\n最近 {len(values)} 个收盘价的移动平均为 {average:.2f}。"
+                f"最新收盘价为 {latest.close:.2f}，与均值相差 {latest.close - average:+.2f}。")
+    if any(term in question for term in ("回测", "准确", "误差", "backtest", "mae")):
+        return (f"{period}\n在 {result.origins} 个回测起点上，自适应策略的 MAE 为 {result.mae:.2f}，"
+                f"最近价格基准为 {result.baseline_mae:.2f}。")
+    if any(term in question for term in ("预测", "区间", "forecast")):
+        model = translate("zh", result.model)
+        return (f"{period}\n{model}预测未来第 {len(result.forecast)} 步为 {result.forecast[-1]:.2f}，"
+                f"经验区间为 [{result.lower[-1]:.2f}, {result.upper[-1]:.2f}]。")
+    if any(term in question for term in ("价格", "收盘", "变动", "price")):
+        move = (latest.close / first.close - 1) * 100
+        return (f"{period}\n{len(prices)} 个观察值中，收盘价从 {first.close:.2f} "
+                f"变为 {latest.close:.2f}（{move:+.2f}%）。")
+    return "可以询问价格变动、预测、移动平均、回测或研究信号。"

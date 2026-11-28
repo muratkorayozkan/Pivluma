@@ -24,7 +24,7 @@ class Analysis:
 TRAINING_WINDOW = 20
 MIN_TRAINING = 8
 SCORE_WINDOW = 32
-NEWS_MODEL = "News-adjusted baseline"
+NEWS_MODEL = "Research-adjusted baseline"
 MIN_NEWS_PAIRS = 20
 MODEL_NAMES = ("Last-price baseline", "Linear trend", "Damped trend", "Smoothed level")
 

@@ -11,7 +11,7 @@ from PySide6.QtCore import QEasingCurve, QProcess, QPropertyAnimation, QSettings
 from PySide6.QtGui import QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFileDialog, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow,
-    QProgressBar, QPushButton, QScrollArea, QSpinBox, QSplitter, QStackedWidget, QTabWidget, QVBoxLayout, QWidget,
+    QProgressBar, QPushButton, QScrollArea, QSpinBox, QStyle, QSplitter, QStackedWidget, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from pivluma import __version__
@@ -82,6 +82,7 @@ class Dashboard(QMainWindow):
         self.language_picker = QComboBox()
         self.language_picker.addItem("EN · English", "en")
         self.language_picker.addItem("TR · Türkçe", "tr")
+        self.language_picker.addItem("ZH · 简体中文", "zh")
         self.language_picker.setAccessibleName(self.text("Language"))
         self.language_picker.currentIndexChanged.connect(self.change_language)
         header.addWidget(self.language_picker)
@@ -91,19 +92,20 @@ class Dashboard(QMainWindow):
                               ("Settings", settings_dialog), ("Shortcuts", shortcuts_dialog)):
             button = self.localized_button(label)
             button.clicked.connect(lambda checked=False, callback=action: callback(self))
+            button.setProperty("headerAction", True)
             header.addWidget(button)
+        self.update_button.setProperty("headerAction", True)
         header.addWidget(self.update_button)
-        layout.addLayout(header)
         self.update_message = ""
+        self.update_icon = QLabel()
+        self.update_icon.setFixedWidth(18)
+        self.update_icon.hide()
+        header.addWidget(self.update_icon)
         self.update_label = QLabel()
-        self.update_label.setWordWrap(True)
-        self.update_label.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self.update_label.setFixedWidth(310)
+        self.update_label.setObjectName("updateStatus")
         self.update_label.hide()
-        update_row = QHBoxLayout()
-        update_row.addStretch()
-        update_row.addWidget(self.update_label, alignment=Qt.AlignmentFlag.AlignRight)
-        layout.addLayout(update_row)
+        header.addWidget(self.update_label)
+        layout.addLayout(header)
         market_section = QVBoxLayout()
         market_heading = self.localized_label("Market data")
         market_heading.setProperty("sectionTitle", True)
@@ -285,7 +287,7 @@ class Dashboard(QMainWindow):
         self.news_scores = {}
         self.news_source = ""
         self.news_message = ""
-        self.news = NewsFeed(self)
+        self.news = NewsFeed(self, self.database.with_name("news-cache.json") if self.database.is_absolute() else None)
         self.news.status.connect(self.set_news_status)
         self.news.loaded.connect(self.receive_news)
         news_controls = QHBoxLayout()
@@ -348,6 +350,23 @@ class Dashboard(QMainWindow):
         super().resizeEvent(event)
         if hasattr(self, "workspace_stack"):
             self.arrange_workspace()
+            self.update_label.setVisible(bool(self.update_message) and self.width() >= 1120)
+
+    def render_update_status(self):
+        message = self.update_message
+        states = {
+            "Checking and preparing updates…": ("Checking", QStyle.StandardPixmap.SP_BrowserReload),
+            "No newer verified update found.": ("Up to date", QStyle.StandardPixmap.SP_DialogApplyButton),
+            "Update ready.": ("Available", QStyle.StandardPixmap.SP_ArrowDown),
+        }
+        short, icon = states.get(message, ("Check failed", QStyle.StandardPixmap.SP_MessageBoxWarning))
+        self.update_icon.setPixmap(self.style().standardIcon(icon).pixmap(16, 16))
+        self.update_icon.setToolTip(self.text(message))
+        self.update_icon.setAccessibleName(self.text(message))
+        self.update_label.setText(self.text(short) if message else "")
+        self.update_label.setToolTip(self.text(message))
+        self.update_icon.setVisible(bool(message) and not self.update_button.isHidden())
+        self.update_label.setVisible(bool(message) and self.width() >= 1120 and not self.update_button.isHidden())
 
     def arrange_workspace(self):
         wide = self.width() >= 1180
@@ -376,6 +395,7 @@ class Dashboard(QMainWindow):
         self.setStyleSheet(stylesheet(colors))
         self.chart.colors = colors
         self.chart.update()
+        self.render_update_status()
         if self.settings is not None:
             self.settings.setValue("theme", self.theme)
 
@@ -421,7 +441,7 @@ class Dashboard(QMainWindow):
         self.update_quote()
         self.update_summary()
         self.show_chart_point(self.chart.selected_index)
-        self.update_label.setText(self.text(self.update_message))
+        self.render_update_status()
         self.local_model.cancel()
         if self.reply.text():
             self.render_analyst(False)
@@ -447,8 +467,8 @@ class Dashboard(QMainWindow):
             message = self.text(self.news_message)
         elif self.news_scores and self.chart.result:
             result = self.chart.result
-            mode = self.text("News model selected" if result.model == NEWS_MODEL else "Price model selected")
-            message = self.text("{source} · {count} matched news/return pairs · {mode}",
+            mode = self.text("Research model selected" if result.model == NEWS_MODEL else "Price model selected")
+            message = self.text("{source} · {count} matched research/return pairs · {mode}",
                                 source=self.text(self.news_source), count=result.news_pairs, mode=mode)
         else:
             message = ""
@@ -466,10 +486,10 @@ class Dashboard(QMainWindow):
             return
         self.news.start(self.series_symbol)
 
-    def receive_news(self, symbol, scores):
+    def receive_news(self, symbol, scores, source="GDELT news tone"):
         if self.prices and symbol == self.series_symbol:
             self.news_scores = scores
-            self.news_source = "GDELT news tone"
+            self.news_source = source
             self.news_message = ""
             self.refresh()
 
@@ -656,9 +676,9 @@ class Dashboard(QMainWindow):
 
     def contextual_topic(self):
         question = self.question.text().casefold()
-        if any(term in question for term in ("selected point", "seçili nokta", "seçilen nokta")):
+        if any(term in question for term in ("selected point", "seçili nokta", "seçilen nokta", "选中的点")):
             return "point"
-        if any(term in question for term in ("visible period", "görünür dönem", "grafikteki dönem")):
+        if any(term in question for term in ("visible period", "görünür dönem", "grafikteki dönem", "可见区间")):
             return "period"
         return None
 
@@ -842,7 +862,6 @@ def main():
             if started:
                 return 0
         window.update_button.show()
-        window.update_label.show()
         UpdateController(window, window.update_button, updates, settings)
     window.showMaximized()
     QTimer.singleShot(0, window, window.start_default_market)

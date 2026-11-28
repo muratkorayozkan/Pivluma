@@ -42,7 +42,7 @@ class UpdateController(QObject):
 
     def set_status(self, message):
         self.window.update_message = message
-        self.window.update_label.setText(self.window.text(message))
+        self.window.render_update_status()
 
     def start(self):
         if not self.button.isEnabled() or self.pending is not None:
