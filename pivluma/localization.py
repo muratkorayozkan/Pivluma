@@ -9,6 +9,7 @@ TURKISH = {
     "Download": "İndir",
     "Local model is ready.": "Yerel model hazır.",
     "Downloading and verifying the local model…": "Yerel model indiriliyor ve doğrulanıyor…",
+    "Cancel": "İptal",
     "Cancelling download…": "İndirme iptal ediliyor…",
     "Download failed. Check the connection and available disk space.": "İndirme başarısız. Bağlantıyı ve boş disk alanını kontrol edin.",
     "Local model unavailable. Check the llama.cpp download in Settings.": "Yerel modele ulaşılamadı. Ayarlar’daki llama.cpp indirmesini kontrol edin.",

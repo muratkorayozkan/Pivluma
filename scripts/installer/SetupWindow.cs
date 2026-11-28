@@ -119,7 +119,7 @@ internal sealed class SetupWindow : Form
         shortcut.Enabled = false;
         localModel.Enabled = false;
         install.Enabled = false;
-        status.Text = "Waiting for Windows approval or installing Pivlumaâ€¦";
+        status.Text = "Waiting for Windows approval or installing Pivluma…";
         progress.Visible = true;
         progress.MarqueeAnimationSpeed = 35;
         try

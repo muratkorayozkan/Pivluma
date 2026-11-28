@@ -33,7 +33,7 @@ def smoke_test() -> int:
             not chart_clear or window.scroll_area.verticalScrollBar().maximum() <= 0
             or
             window.windowIcon().isNull() or window.chart.grab().isNull()
-            or "7 observations ahead" not in english_reply or "7 gÃ¶zlem" not in window.reply.text()
+            or "7 observations ahead" not in english_reply or "7 gözlem" not in window.reply.text()
         )
     finally:
         window.close()

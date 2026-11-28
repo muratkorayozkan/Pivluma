@@ -7,6 +7,7 @@ CHINESE = {
     "Download": "下载",
     "Local model is ready.": "本地模型已就绪。",
     "Downloading and verifying the local model…": "正在下载并验证本地模型…",
+    "Cancel": "取消",
     "Cancelling download…": "正在取消下载…",
     "Download failed. Check the connection and available disk space.": "下载失败，请检查网络连接和可用磁盘空间。",
     "Local model unavailable. Check the llama.cpp download in Settings.": "本地模型不可用。请在设置中检查 llama.cpp 下载。",
