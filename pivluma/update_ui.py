@@ -81,7 +81,7 @@ class UpdateController(QObject):
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
-        started, _ = QProcess.startDetached(str(path), [], str(path.parent))
+        started, _ = QProcess.startDetached(str(path), ["--replace-instance"], str(path.parent))
         if started:
             self.settings.setValue("preferred_release", path.parent.name)
             self.settings.sync()

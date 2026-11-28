@@ -21,9 +21,10 @@ except ModuleNotFoundError as error:
         raise
     raise unittest.SkipTest("Install requirements-desktop.txt to run Qt tests.")
 
-from pivluma.data import PriceStore, sample_prices
+from pivluma.data import Price, PriceStore, sample_prices
 from pivluma.desktop import Dashboard
 from pivluma.dialogs import about_dialog
+from pivluma.single_instance import SingleInstance
 from pivluma.update_ui import UpdateController
 
 
@@ -85,9 +86,42 @@ class DashboardTests(unittest.TestCase):
             self.assertIn("llama.cpp scenario band", chart.point_text(step))
             chart.set_layer("llama_band", False)
             self.assertNotIn("llama.cpp scenario band", chart.point_text(step))
-            self.assertIn("llama.cpp forecast", chart.point_text(step))
+            self.assertIn("llama.cpp", chart.point_text(step))
             chart.set_layer("llama", False)
-            self.assertNotIn("llama.cpp forecast", chart.point_text(step))
+            self.assertFalse(chart.forecast_visible())
+        finally:
+            window.close()
+            delete(window)
+
+    def test_second_launch_notifies_the_active_instance(self):
+        with tempfile.TemporaryDirectory() as folder:
+            first, second = (SingleInstance(Path(folder)) for _ in range(2))
+            received = []
+            self.assertTrue(first.acquire())
+            try:
+                first.activate_on_connection(lambda: received.append(True))
+                self.assertFalse(second.acquire())
+                QTest.qWait(100)
+                self.assertEqual(received, [True])
+            finally:
+                first.release()
+            try:
+                self.assertTrue(second.acquire())
+            finally:
+                second.release()
+
+    def test_symbol_comparison_rebases_on_first_visible_common_date(self):
+        window = Dashboard(Path("unused.sqlite"))
+        try:
+            first, second = window.prices[-2:]
+            window.receive_comparison("TEST", [Price(first.day, 200.), Price(second.day, 220.)])
+            points = window.chart.comparison_points()
+            self.assertEqual(len(points), 2)
+            self.assertAlmostEqual(points[0][1], first.close)
+            self.assertAlmostEqual(points[1][1], first.close * 1.1)
+            self.assertIn("TEST rebased", window.chart.point_text(points[-1][0]))
+            window.clear_comparison()
+            self.assertEqual(window.chart.comparison_points(), [])
         finally:
             window.close()
             delete(window)
@@ -346,7 +380,7 @@ class DashboardTests(unittest.TestCase):
                 launch.assert_not_called()
                 with patch("pivluma.update_ui.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes):
                     controller.activate()
-                launch.assert_called_once_with(str(path), [], str(path.parent))
+                launch.assert_called_once_with(str(path), ["--replace-instance"], str(path.parent))
             settings.setValue.assert_called_once_with("preferred_release", path.parent.name)
         finally:
             window.close()
@@ -382,6 +416,8 @@ class DashboardTests(unittest.TestCase):
             self.assertEqual(window.horizon.maximum(), 91)
             window.horizon.setValue(80)
             self.assertEqual(len(window.chart.result.forecast), 80)
+            self.assertFalse(window.chart.forecast_visible())
+            window.chart.llama_forecast = tuple(value + 1 for value in window.chart.result.forecast)
             window.chart.set_history_limit(30)
             window.show()
             self.application.processEvents()
@@ -478,6 +514,8 @@ class DashboardTests(unittest.TestCase):
             window.ask_topic("Explain the selected point")
             self.assertIn(str(chart.visible_days()[0]), window.reply.text())
             chart.reset_view()
+            self.assertFalse(chart.forecast_visible())
+            chart.llama_forecast = chart.result.forecast
             self.assertTrue(chart.forecast_visible())
         finally:
             window.close()

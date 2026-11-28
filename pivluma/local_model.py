@@ -20,14 +20,19 @@ LOCAL_MODEL = "llama"
 def chat_request(model, language, question, facts):
     if model != LOCAL_MODEL:
         raise ValueError("Unsupported local model.")
+    language_name = {"tr": "Turkish", "zh": "Simplified Chinese"}.get(language, "English")
     instruction = (
-        "Answer only the question using the supplied facts. Use up to four concise lines. "
-        "Use final_forecast for the final estimate and its lower and upper bounds. "
-        "Copy values accurately, rounding only when requested. "
-        "Mention missing information only if it is necessary to answer the question. "
-        "Do not suggest trades or imply certainty. Reply in "
-        + {"tr": "Turkish.", "zh": "Simplified Chinese."}.get(language, "English.")
+        f"Answer only the question using the supplied facts. Use up to four concise lines in {language_name}. "
+        "Keep numbers and units accurate. Do not suggest trades or imply certainty. "
     )
+    if facts.get("analysis_topic") == "research":
+        instruction += (
+            "Compare subsequent returns after positive and negative research scores and state the sample sizes. "
+            "Use the words median and range for historical pattern outcomes. "
+            "Distinguish historical association from causation. Do not invent article text, events, or forecasts."
+        )
+    else:
+        instruction += "For the final forecast and its bounds, use final_forecast when available."
     facts = dict(facts)
     if forecast := facts.get("forecast"):
         facts = {"final_forecast": forecast[-1], **facts}

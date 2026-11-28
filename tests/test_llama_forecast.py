@@ -31,8 +31,8 @@ class LocalForecastTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             forecast_path('{"changes":[1, 2]}', 100, 2)
         body = '{"changes":[0, 0]}'
-        rising = forecast_path(body, 100, 2, [{"score": 80}])
-        falling = forecast_path(body, 100, 2, [{"score": -80}])
+        rising = forecast_path(body, 100, 2, .4)
+        falling = forecast_path(body, 100, 2, -.4)
         self.assertAlmostEqual(rising[0], 100.4)
         self.assertAlmostEqual(falling[0], 99.6)
         self.assertLess(rising[1] - falling[1], rising[0] - falling[0])

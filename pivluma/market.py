@@ -149,7 +149,7 @@ class MarketFeed(QObject):
     def with_provider(self, message):
         return message.replace("Twelve Data", self.provider, 1)
 
-    def start(self, symbol, key):
+    def start(self, symbol, key, *, history_only=False):
         self.stop()
         if key is None and symbol in FX_SYMBOLS:
             self.provider = "ECB"
@@ -175,7 +175,7 @@ class MarketFeed(QObject):
         request.setTransferTimeout(15000)
         reply = self.network.get(request)
         self.pending = reply
-        reply.finished.connect(lambda: self.finish_history(reply, symbol, key))
+        reply.finished.connect(lambda: self.finish_history(reply, symbol, key, history_only=history_only))
         self.report("Twelve Data · Loading daily history")
 
     def finish_ecb_history(self, reply, symbol):
@@ -193,7 +193,7 @@ class MarketFeed(QObject):
         self.history.emit(symbol, prices)
         self.status.emit("ECB · Daily reference rates")
 
-    def finish_history(self, reply, symbol, key):
+    def finish_history(self, reply, symbol, key, *, history_only=False):
         reply.deleteLater()
         if reply is not self.pending:
             return
@@ -205,7 +205,8 @@ class MarketFeed(QObject):
         if reply.error() != QNetworkReply.NetworkError.NoError:
             message = "Twelve Data · History request failed. Check connection and account access."
             self.history_warning.emit(self.with_provider(message))
-            self.open_stream(symbol, key)
+            if not history_only:
+                self.open_stream(symbol, key)
             return
         try:
             parse = kraken_history_rows if key is None else history_rows
@@ -214,10 +215,12 @@ class MarketFeed(QObject):
             self.history_warning.emit(
                 self.with_provider("Twelve Data · Daily history unavailable. Check symbol and account access.")
             )
-            self.open_stream(symbol, key)
+            if not history_only:
+                self.open_stream(symbol, key)
             return
         self.history.emit(symbol, prices)
-        self.open_stream(symbol, key)
+        if not history_only:
+            self.open_stream(symbol, key)
 
     def open_stream(self, symbol, key):
         self.fallback_context = (symbol, key) if key is not None else None

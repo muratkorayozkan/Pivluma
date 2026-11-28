@@ -2,8 +2,15 @@
 
 import ctypes
 import sys
+from pathlib import Path
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QFontDatabase
+
+
+def install_brand_font():
+    if "Bricolage Grotesque" not in QFontDatabase.families():
+        QFontDatabase.addApplicationFont(str(Path(__file__).with_name("fonts") / "BricolageGrotesque.ttf"))
 
 
 def animations_enabled():
@@ -53,7 +60,7 @@ def stylesheet(colors):
         QWidget {{ background: {background}; color: {text}; font-size: 14px; }}
         QWidget[aboutCard="true"] {{ background: {surface}; border-radius: 8px; }}
         QWidget[aboutCard="true"] QLabel {{ background: transparent; }}
-        QLabel#title {{ font-size: 31px; font-weight: 700; }}
+        QLabel#title {{ font-family: "Bricolage Grotesque", "Segoe UI"; font-size: 33px; font-weight: 700; }}
         QLabel[sectionTitle="true"] {{ font-size: 17px; font-weight: 650; }}
         QLabel#dataset {{ font-size: 16px; font-weight: 650; }}
         QLabel#metrics {{ background: {surface}; border: 1px solid {border}; border-radius: 8px; padding: 10px; }}

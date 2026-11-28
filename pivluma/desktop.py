@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 
 from pivluma import __version__
 from pivluma.analyst import answer, price_statistics
-from pivluma.appearance import THEMES, animations_enabled, colors_for, stylesheet
+from pivluma.appearance import THEMES, animations_enabled, colors_for, install_brand_font, stylesheet
 from pivluma.chart import PriceChart
 from pivluma.data import PriceStore, read_prices, sample_prices
 from pivluma.dialogs import about_dialog, axis_dialog, history_dialog, settings_dialog, shortcuts_dialog
@@ -29,6 +29,9 @@ from pivluma.local_model import LOCAL_MODEL, LocalModel
 from pivluma.localization import translate
 from pivluma.market import FX_SYMBOLS, OTHER_SYMBOLS, PUBLIC_SYMBOLS, MarketFeed
 from pivluma.news import NewsFeed, align_scores, read_news_scores
+from pivluma.patterns import historical_patterns
+from pivluma.research import research_evidence, summarize_research
+from pivluma.single_instance import SingleInstance
 from pivluma.update_ui import UpdateController
 
 
@@ -66,11 +69,13 @@ class Dashboard(QMainWindow):
         self.llama_pending = False
         self.llama_message = ""
         self.llama_source = ""
-        self.llama_research = ()
+        self.llama_research = 0.
+        self.llama_patterns = None
         self.localized = []
         self.market_message = "Twelve Data · Disconnected"
         self.setWindowIcon(QIcon(str(Path(__file__).with_name("pivluma.ico"))))
         self.motion_enabled = animations_enabled()
+        install_brand_font()
         for keys, _, method in SHORTCUTS:
             QShortcut(QKeySequence(keys), self, activated=getattr(self, method))
         self.setWindowTitle(f"Pivluma {__version__}")
@@ -207,20 +212,39 @@ class Dashboard(QMainWindow):
         reset.clicked.connect(self.reset_chart)
         chart_controls.addWidget(reset)
         chart_controls.addStretch()
+        compare = self.localized_button("Compare symbol")
+        compare.clicked.connect(self.choose_comparison)
+        chart_controls.addWidget(compare)
         chart_layout.addLayout(chart_controls)
+        compare_row = QHBoxLayout()
+        self.comparison_status = QLabel()
+        self.comparison_status.setTextFormat(Qt.TextFormat.PlainText)
+        self.comparison_status.setWordWrap(True)
+        compare_row.addWidget(self.comparison_status, 1)
+        self.clear_compare = self.localized_button("Clear comparison")
+        self.clear_compare.clicked.connect(self.clear_comparison)
+        compare_row.addWidget(self.clear_compare)
+        self.clear_compare.hide()
+        chart_layout.addLayout(compare_row)
+        self.comparison_market = MarketFeed(self)
+        self.comparison_market.history.connect(self.receive_comparison)
+        self.comparison_market.history_warning.connect(self.comparison_error)
+        self.comparison_market.status.connect(self.comparison_state)
+        self.pending_comparison = ""
+        self.comparison_failed = False
         self.llama_button = self.localized_button("Run llama.cpp forecast")
         self.llama_button.clicked.connect(self.request_llama_forecast)
         self.llama_status = QLabel()
         self.llama_status.setWordWrap(True)
         chart_layout.addWidget(self.llama_button, alignment=Qt.AlignmentFlag.AlignLeft)
         chart_layout.addWidget(self.llama_status)
-        self.chart = PriceChart()
+        self.chart = PriceChart(self.motion_enabled)
         self.history_range.currentIndexChanged.connect(
             lambda: self.chart.set_history_limit(self.history_range.currentData())
         )
         layers = QHBoxLayout()
         for key, title in (("close", "Close"), ("average", "SMA 20"),
-                           ("forecast", "Forecast"), ("interval", "Interval"), ("llama", "llama.cpp"),
+                           ("llama", "llama.cpp"),
                            ("llama_band", "llama band")):
             control = QCheckBox()
             self.localize(control.setText, title)
@@ -242,7 +266,7 @@ class Dashboard(QMainWindow):
         chart_layout.addWidget(self.point_details)
         self.chart.selected.connect(self.show_chart_point)
         self.chart_legend = self.localized_label(
-            "Closing price  /  Dashed forecast  /  Shaded empirical interval"
+            "Closing price  /  Dash-dot llama forecast  /  Dotted scenario band"
         )
         self.chart_legend.setWordWrap(True)
         chart_layout.addWidget(self.chart_legend)
@@ -270,6 +294,7 @@ class Dashboard(QMainWindow):
             ("Selected point", "Explain the selected point"),
             ("Volatility", "What is the volatility?"),
             ("Max drawdown", "What was the maximum drawdown?"),
+            ("Analyze news", "Analyze recent news scores"),
         )):
             topic = self.localized_button(label)
             topic.clicked.connect(lambda checked=False, prompt=question: self.ask_topic(prompt))
@@ -300,6 +325,7 @@ class Dashboard(QMainWindow):
         analyst_layout.addWidget(self.reply)
         analyst_layout.addStretch()
         self.chart.viewport_changed.connect(self.refresh_contextual_reply)
+        self.chart.viewport_changed.connect(self.render_comparison)
         self.chart.selected.connect(lambda _: self.refresh_contextual_reply())
         self.arrange_workspace()
         self.status = QLabel()
@@ -368,6 +394,13 @@ class Dashboard(QMainWindow):
     def exit_fullscreen(self):
         if self.isMaximized():
             self.showNormal()
+
+    def activate_existing(self):
+        if self.isMinimized():
+            self.setWindowState(self.windowState() & ~Qt.WindowState.WindowMinimized)
+        self.show()
+        self.raise_()
+        self.activateWindow()
 
     def open_symbol_list(self):
         self.symbol.setFocus()
@@ -531,6 +564,7 @@ class Dashboard(QMainWindow):
         self.update_summary()
         self.show_chart_point(self.chart.selected_index)
         self.update_llama_status()
+        self.render_comparison()
         self.render_update_status()
         self.cancel_model_request()
         if self.reply.text():
@@ -657,6 +691,79 @@ class Dashboard(QMainWindow):
         except ValueError as error:
             self.status.setText(str(error))
 
+    def choose_comparison(self):
+        try:
+            with closing(sqlite3.connect(self.database)) as connection:
+                saved = PriceStore(connection).symbols()
+        except sqlite3.Error:
+            saved = []
+        symbols = sorted((set(saved) | PUBLIC_SYMBOLS.keys() | FX_SYMBOLS.keys()) - {self.series_symbol})
+        if not symbols:
+            return
+        symbol, accepted = QInputDialog.getItem(
+            self, self.text("Compare symbol"), self.text("Symbol"), symbols, 0, False
+        )
+        if not accepted:
+            return
+        self.clear_comparison()
+        if symbol in saved:
+            try:
+                with closing(sqlite3.connect(self.database)) as connection:
+                    prices = PriceStore(connection).load(symbol)
+                if prices:
+                    self.receive_comparison(symbol, prices)
+                    return
+            except (sqlite3.Error, ValueError):
+                self.comparison_error()
+                return
+        if symbol not in PUBLIC_SYMBOLS and symbol not in FX_SYMBOLS:
+            self.comparison_error()
+            return
+        self.pending_comparison = symbol
+        self.render_comparison()
+        self.comparison_market.start(symbol, None, history_only=True)
+
+    def comparison_error(self, *_):
+        self.pending_comparison = ""
+        self.comparison_failed = True
+        self.render_comparison()
+
+    def comparison_state(self, message):
+        if "unavailable" in message or "rejected" in message:
+            self.comparison_error()
+
+    def receive_comparison(self, symbol, prices):
+        self.pending_comparison = ""
+        self.comparison_failed = False
+        self.chart.comparison_symbol = symbol
+        self.chart.comparison_closes = {price.day: price.close for price in prices}
+        self.chart.view_changed()
+
+    def clear_comparison(self):
+        self.comparison_market.stop()
+        self.pending_comparison = ""
+        self.comparison_failed = False
+        self.chart.comparison_symbol = ""
+        self.chart.comparison_closes = {}
+        self.chart.view_changed()
+
+    def render_comparison(self):
+        symbol = self.chart.comparison_symbol
+        visible = bool(self.pending_comparison or symbol or self.comparison_failed)
+        self.clear_compare.setVisible(visible)
+        self.comparison_status.setVisible(visible)
+        if self.pending_comparison:
+            text = self.text("Loading comparison for {symbol}…", symbol=self.pending_comparison)
+        elif self.comparison_failed:
+            text = self.text("Comparison price history unavailable.")
+        elif symbol and self.chart.comparison_points():
+            text = self.text("Dashed purple line · {symbol}, rebased at the first common date.", symbol=symbol)
+        elif symbol:
+            text = self.text("{symbol} has fewer than two common dates in this view.", symbol=symbol)
+        else:
+            text = ""
+        self.comparison_status.setText(text)
+
     def stop_market(self):
         self.market.stop()
         self.set_market_status(self.market.with_provider("Twelve Data · Disconnected"))
@@ -754,6 +861,8 @@ class Dashboard(QMainWindow):
         self.reset_news()
         self.series_source = label
         self.series_symbol = symbol
+        if symbol and (symbol == self.chart.comparison_symbol or symbol == self.pending_comparison):
+            self.clear_comparison()
         self.prices = prices
         self.horizon.setEnabled(True)
         self.export_button.setEnabled(True)
@@ -764,6 +873,7 @@ class Dashboard(QMainWindow):
         self.horizon.setMaximum(min(MAX_HORIZON, len(prices) - TRAINING_WINDOW - 9))
         self.horizon.blockSignals(False)
         self.refresh()
+        self.chart.reveal(history=True)
 
     def ask_topic(self, prompt):
         self.question.setText(self.text(prompt))
@@ -836,9 +946,18 @@ class Dashboard(QMainWindow):
             start, end = self.chart.bounds()
             prices = prices[start:end]
             question = "How did the price move?"
-        message = answer(question, self.series_label, prices, self.chart.result, self.language)
+        if self.is_research_question(question):
+            evidence = research_evidence(prices, self.news_scores, self.text(self.news_source))
+            patterns = historical_patterns(prices, self.news_scores, self.horizon.value())
+            message = f"{self.series_label}\n{summarize_research(evidence, self.language, patterns)}"
+        else:
+            message = answer(question, self.series_label, prices, self.chart.result, self.language)
         self.reply.setText(message)
         self.request_model_answer(use_model, message)
+
+    @staticmethod
+    def is_research_question(question):
+        return any(word in question.casefold() for word in ("news", "haber", "新闻", "情绪", "sentiment", "headlines"))
 
     def request_model_answer(self, use_model, calculation):
         question = self.question.text().strip()
@@ -866,6 +985,11 @@ class Dashboard(QMainWindow):
             self.local_model.start_cloud(self.cloud_url, self.cloud_code, self.language, question[:2000], facts)
         else:
             facts["price_statistics"] = price_statistics(self.prices)
+            facts["research_evidence"] = research_evidence(self.prices, self.news_scores, self.news_source)
+            facts["historical_patterns"] = historical_patterns(self.prices, self.news_scores, self.horizon.value())
+            if self.is_research_question(question):
+                facts = {key: facts[key] for key in ("series", "last_date", "research_evidence", "historical_patterns")}
+                facts["analysis_topic"] = "research"
             self.local_model.start(self.analyst_model, self.language, question[:2000], facts)
 
     def show_model_answer(self, model, response):
@@ -886,6 +1010,7 @@ class Dashboard(QMainWindow):
         self.animate_reply()
 
     def closeEvent(self, event):
+        self.comparison_market.stop()
         self.local_model.stop_engine()
         super().closeEvent(event)
 
@@ -918,9 +1043,12 @@ class Dashboard(QMainWindow):
 
     def clear_llama_forecast(self):
         self.chart.llama_forecast = ()
+        self.chart.hover_index = None
+        self.chart.selected_index = None
         self.llama_message = ""
         self.llama_source = ""
-        self.llama_research = ()
+        self.llama_research = 0.
+        self.llama_patterns = None
         self.update_llama_status()
 
     def update_llama_status(self):
@@ -942,7 +1070,8 @@ class Dashboard(QMainWindow):
         self.llama_pending = True
         facts = forecast_input(self.prices, self.horizon.value(), self.news_scores, self.news_source)
         self.llama_source = facts["research_source"]
-        self.llama_research = facts["research_scores"]
+        self.llama_research = facts["research_evidence"]["bounded_adjustment_percent"]
+        self.llama_patterns = facts["historical_patterns"]
         self.llama_message = "Generating llama.cpp forecast · {source}"
         self.update_llama_status()
         self.local_model.start_forecast(facts)
@@ -953,13 +1082,13 @@ class Dashboard(QMainWindow):
         self.llama_pending = False
         try:
             self.chart.llama_forecast = forecast_path(
-                response, self.prices[-1].close, self.horizon.value(), self.llama_research
+                response, self.prices[-1].close, self.horizon.value(), self.llama_research, self.llama_patterns
             )
         except (OverflowError, ValueError):
             self.llama_message = "llama.cpp forecast unavailable."
         else:
             self.llama_message = "Dash-dot line · llama.cpp forecast · {source}. Dotted limits reuse the statistical error widths."
-            self.chart.update()
+            self.chart.reveal()
             self.show_chart_point(self.chart.selected_index)
         self.update_llama_status()
 
@@ -980,6 +1109,7 @@ class Dashboard(QMainWindow):
         self.chart.hover_index = None
         self.chart.select_index(None)
         self.update_summary()
+        self.render_comparison()
         self.reply.clear()
         self.status.clear()
 
@@ -1007,7 +1137,10 @@ class Dashboard(QMainWindow):
             ("Last-price MAE", f"{result.baseline_mae:.2f}"),
             ("Test origins", str(result.origins)),
         )
-        self.metrics.setText("     |     ".join(f"{self.text(label)}  {value}" for label, value in fields))
+        reference = self.text("Statistical reference")
+        self.metrics.setText(f"{reference}\n" + "     |     ".join(
+            f"{self.text(label)}  {value}" for label, value in fields
+        ))
 
 
 def main():
@@ -1017,7 +1150,12 @@ def main():
     application.setStyle("Fusion")
     directory = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation))
     directory.mkdir(parents=True, exist_ok=True)
+    instance = SingleInstance(directory)
+    if not instance.acquire(replacing="--replace-instance" in sys.argv[1:]):
+        return 0
+    application.aboutToQuit.connect(instance.release)
     window = Dashboard(directory / "pivluma.sqlite3")
+    instance.activate_on_connection(window.activate_existing)
     application.setWindowIcon(window.windowIcon())
     settings = QSettings("Pivluma", "Pivluma")
     window.settings = settings
@@ -1037,8 +1175,9 @@ def main():
         updates = directory / "Versions"
         preferred = UpdateController.preferred_executable(settings, updates)
         if preferred is not None:
-            started, _ = QProcess.startDetached(str(preferred), [], str(preferred.parent))
+            started, _ = QProcess.startDetached(str(preferred), ["--replace-instance"], str(preferred.parent))
             if started:
+                instance.release()
                 return 0
         window.update_button.show()
         UpdateController(window, window.update_button, updates, settings)

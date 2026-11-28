@@ -1,6 +1,6 @@
 """Interactive price, moving average, and forecast chart."""
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QEasingCurve, QPointF, QRectF, Qt, Signal, QVariantAnimation
 from PySide6.QtGui import QColor, QFontMetricsF, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import QToolTip, QWidget
 
@@ -13,7 +13,7 @@ class PriceChart(QWidget):
     selected = Signal(object)
     viewport_changed = Signal()
 
-    def __init__(self):
+    def __init__(self, motion_enabled=False):
         super().__init__()
         self.setMinimumHeight(280)
         self.setMouseTracking(True)
@@ -27,13 +27,37 @@ class PriceChart(QWidget):
         self.colors = colors_for("dark-blue", Qt.ColorScheme.Dark)
         self.result = None
         self.llama_forecast = ()
+        self.comparison_symbol = ""
+        self.comparison_closes = {}
         self.language = "en"
-        self.layers = {"close": True, "average": False, "forecast": True, "interval": True, "llama": True, "llama_band": True}
+        self.layers = {"close": True, "average": False, "llama": True, "llama_band": True}
+        self.motion_enabled = motion_enabled
+        self.history_progress = 1.
+        self.forecast_progress = 1.
+        self.history_reveal = QVariantAnimation(self, duration=640)
+        self.forecast_reveal = QVariantAnimation(self, duration=850)
+        for animation, attribute in ((self.history_reveal, "history_progress"),
+                                     (self.forecast_reveal, "forecast_progress")):
+            animation.setStartValue(0.)
+            animation.setEndValue(1.)
+            animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+            animation.valueChanged.connect(lambda value, name=attribute: self.advance_reveal(name, value))
         self.drag_start = None
         self.drag_offset = 0
         self.dragged = False
         self.hover_index = None
         self.setAccessibleName("Closing prices and forecast interval")
+
+    def advance_reveal(self, attribute, value):
+        setattr(self, attribute, value)
+        self.update()
+
+    def reveal(self, *, history=False):
+        animation = self.history_reveal if history else self.forecast_reveal
+        if self.motion_enabled and self.isVisible():
+            animation.stop()
+            animation.start()
+        self.update()
 
     def bounds(self):
         end = len(self.history) - self.history_offset
@@ -48,9 +72,7 @@ class PriceChart(QWidget):
         return self.days[start:end]
 
     def forecast_visible(self):
-        return self.history_offset == 0 and (
-            self.layers["forecast"] or self.layers["interval"] or self.llama_visible() or self.llama_band_visible()
-        )
+        return self.history_offset == 0 and self.llama_visible()
 
     def llama_visible(self):
         return self.layers["llama"] and bool(self.llama_forecast)
@@ -64,6 +86,15 @@ class PriceChart(QWidget):
         return (max(0., center - (baseline - self.result.lower[step])),
                 center + (self.result.upper[step] - baseline))
 
+    def comparison_points(self):
+        common = [(index, self.comparison_closes[day], close)
+                  for index, (day, close) in enumerate(zip(self.visible_days(), self.visible_history()))
+                  if day in self.comparison_closes]
+        if len(common) < 2:
+            return []
+        scale = common[0][2] / common[0][1]
+        return [(index, close * scale) for index, close, _ in common]
+
     def moving_average(self):
         start, end = self.bounds()
         return [(index - start, sum(self.history[index + 1 - TRAINING_WINDOW:index + 1]) / TRAINING_WINDOW)
@@ -71,13 +102,7 @@ class PriceChart(QWidget):
 
     def price_bounds(self):
         history = self.visible_history()
-        values = list(history)
-        if self.forecast_visible():
-            if self.layers["forecast"]:
-                values.extend(self.result.forecast)
-            if self.layers["interval"]:
-                values.extend(self.result.lower)
-                values.extend(self.result.upper)
+        values = [*history, *(value for _, value in self.comparison_points())]
         if self.history_offset == 0 and self.llama_visible():
             values.extend(self.llama_forecast)
         if self.history_offset == 0 and self.llama_band_visible():
@@ -103,6 +128,9 @@ class PriceChart(QWidget):
         self.view_changed()
 
     def view_changed(self):
+        self.history_reveal.stop()
+        self.forecast_reveal.stop()
+        self.history_progress = self.forecast_progress = 1.
         self.hover_index = None
         self.select_index(None)
         self.viewport_changed.emit()
@@ -136,26 +164,25 @@ class PriceChart(QWidget):
         history = self.visible_history()
         if index < len(history):
             template = translate(self.language, "{date} · Close {price:.8g}")
-            return template.format(date=self.visible_days()[index], price=history[index])
+            text = template.format(date=self.visible_days()[index], price=history[index])
+            value = dict(self.comparison_points()).get(index)
+            if value is not None:
+                template = translate(self.language, "{symbol} rebased: {value:.8g}")
+                text += " · " + template.format(symbol=self.comparison_symbol, value=value)
+            return text
         step = index - len(history)
-        template = translate(
-            self.language, "Forecast step {step} · {price:.8g} · Interval [{lower:.8g}, {upper:.8g}]"
-        )
-        text = template.format(step=step + 1, price=self.result.forecast[step],
-                               lower=self.result.lower[step], upper=self.result.upper[step])
-        if self.llama_visible():
-            label = translate(self.language, "llama.cpp forecast")
-            text += f" · {label} {self.llama_forecast[step]:.8g}"
-            if self.llama_band_visible():
-                lower, upper = self.llama_bounds(step)
-                band = translate(self.language, "llama.cpp scenario band")
-                text += f" · {band} [{lower:.8g}, {upper:.8g}]"
+        template = translate(self.language, "Forecast step {step} · llama.cpp {price:.8g}")
+        text = template.format(step=step + 1, price=self.llama_forecast[step])
+        if self.llama_band_visible():
+            lower, upper = self.llama_bounds(step)
+            band = translate(self.language, "llama.cpp scenario band")
+            text += f" · {band} [{lower:.8g}, {upper:.8g}]"
         return text
 
     def index_at(self, position):
         if not self.plot_area.contains(position) or self.plot_area.width() <= 0:
             return None
-        count = len(self.visible_history()) + (len(self.result.forecast) if self.forecast_visible() else 0)
+        count = len(self.visible_history()) + (len(self.llama_forecast) if self.forecast_visible() else 0)
         fraction = (position.x() - self.plot_area.left()) / self.plot_area.width()
         return round(fraction * (count - 1))
 
@@ -214,10 +241,9 @@ class PriceChart(QWidget):
             return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        _, surface, text, grid, actual_color, forecast_color, fill = self.colors
+        _, surface, text, grid, actual_color, _, _ = self.colors
         painter.fillRect(self.rect(), QColor(surface))
         history = self.visible_history()
-        result = self.result
         show_forecast = self.forecast_visible()
         lower, upper = self.axis_limits or self.price_bounds()
         values = [lower + (upper - lower) * index / 4 for index in range(5)]
@@ -229,7 +255,7 @@ class PriceChart(QWidget):
         chart = QRectF(left_margin, top_margin, self.width() - left_margin - 24,
                        self.height() - top_margin - bottom_margin)
         self.plot_area = chart
-        last = len(history) + (len(result.forecast) if show_forecast else 0) - 1
+        last = len(history) + (len(self.llama_forecast) if show_forecast else 0) - 1
 
         def point(index, price):
             return QPointF(chart.left() + chart.width() * index / max(last, 1),
@@ -251,14 +277,11 @@ class PriceChart(QWidget):
             boundary = point(start, lower).x()
             painter.setPen(QPen(QColor(grid), 1, Qt.PenStyle.DashLine))
             painter.drawLine(QPointF(boundary, chart.top()), QPointF(boundary, chart.bottom()))
-        if show_forecast and self.layers["interval"]:
-            top = [point(start, history[-1])] + [
-                point(start + step, value) for step, value in enumerate(result.upper, 1)
-            ]
-            bottom = [point(start + step, value) for step, value in enumerate(result.lower, 1)]
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(fill))
-            painter.drawPolygon(QPolygonF(top + list(reversed(bottom))))
+        painter.save()
+        history_width = point(start, lower).x() - chart.left()
+        painter.setClipRect(QRectF(chart.left() - 1, chart.top() - 1,
+                                   history_width * self.history_progress + 2, chart.height() + 2),
+                            Qt.ClipOperation.IntersectClip)
         if self.layers["close"]:
             painter.setPen(QPen(QColor(actual_color), 2))
             painter.drawPolyline(QPolygonF([point(i, value) for i, value in enumerate(history)]))
@@ -267,15 +290,32 @@ class PriceChart(QWidget):
             average_color = average_color.lighter(145) if QColor(surface).lightness() < 128 else average_color.darker(145)
             painter.setPen(QPen(average_color, 2, Qt.PenStyle.DotLine))
             painter.drawPolyline(QPolygonF([point(i, value) for i, value in self.moving_average()]))
-        if show_forecast and self.layers["forecast"]:
-            painter.setPen(QPen(QColor(forecast_color), 2, Qt.PenStyle.DashLine))
-            painter.drawPolyline(QPolygonF([
-                point(start + i, value) for i, value in enumerate([history[-1], *result.forecast])
-            ]))
+        comparison = self.comparison_points()
+        if comparison:
+            color = QColor("#c5a4ff" if QColor(surface).lightness() < 128 else "#6538a0")
+            painter.setPen(QPen(color, 2, Qt.PenStyle.DashLine))
+            painter.drawPolyline(QPolygonF([point(index, value) for index, value in comparison]))
+        painter.restore()
+        painter.save()
+        if show_forecast:
+            boundary = point(start, lower).x()
+            painter.setClipRect(QRectF(boundary - 1, chart.top() - 1,
+                                       (chart.right() - boundary) * self.forecast_progress + 2, chart.height() + 2),
+                                Qt.ClipOperation.IntersectClip)
         if show_forecast and self.llama_band_visible():
             bounds = [self.llama_bounds(step) for step in range(len(self.llama_forecast))]
             border = QColor(llama_color)
             border.setAlpha(180)
+            painter.setPen(QPen(border, 1.5, Qt.PenStyle.DotLine))
+            shade = QColor(llama_color)
+            shade.setAlpha(round(25 * self.forecast_progress))
+            lower_points, upper_points = [
+                [point(start, history[-1]), *(point(start + i, value) for i, value in enumerate(values, 1))]
+                for values in zip(*bounds)
+            ]
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(shade)
+            painter.drawPolygon(QPolygonF(upper_points + list(reversed(lower_points))))
             painter.setPen(QPen(border, 1.5, Qt.PenStyle.DotLine))
             for values in zip(*bounds):
                 painter.drawPolyline(QPolygonF([
@@ -286,6 +326,7 @@ class PriceChart(QWidget):
             painter.drawPolyline(QPolygonF([
                 point(start + i, value) for i, value in enumerate([history[-1], *self.llama_forecast])
             ]))
+        painter.restore()
         for index, radius in ((self.hover_index, 2), (self.selected_index, 4)):
             if index is not None:
                 x = point(index, lower).x()
@@ -295,11 +336,7 @@ class PriceChart(QWidget):
                     markers = [(history[index], QColor(actual_color))]
                 else:
                     step = index - len(history)
-                    markers = []
-                    if self.layers["forecast"] or self.layers["interval"]:
-                        markers.append((result.forecast[step], QColor(forecast_color)))
-                    if self.llama_visible():
-                        markers.append((self.llama_forecast[step], llama_color))
+                    markers = [(self.llama_forecast[step], llama_color)]
                 for price, color in markers:
                     painter.setPen(color)
                     painter.setBrush(color)
@@ -312,7 +349,7 @@ class PriceChart(QWidget):
         end_label = str(days[-1])
         end_x = point(start, lower).x()
         if show_forecast:
-            horizon_label = f"+{len(result.forecast)}"
+            horizon_label = f"+{len(self.llama_forecast)}"
             horizon_x = chart.right() - font.horizontalAdvance(horizon_label)
             painter.drawText(QPointF(horizon_x, baseline), horizon_label)
             end_x = min(horizon_x - font.horizontalAdvance(end_label) - 12, end_x)

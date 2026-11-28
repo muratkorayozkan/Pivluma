@@ -4,6 +4,9 @@ from datetime import timedelta
 from math import isfinite
 from statistics import median, pstdev
 
+from pivluma.patterns import historical_patterns
+from pivluma.research import research_evidence
+
 FORECAST_TASK = "llama-forecast"
 
 
@@ -29,6 +32,8 @@ def forecast_input(prices, horizon, scores, source):
         "recent_returns_percent": [round(value, 4) for value in returns],
         "requested_steps": anchor_steps(horizon),
         "research_source": source if news else "",
+        "research_evidence": research_evidence(prices, scores, source),
+        "historical_patterns": historical_patterns(prices, scores, horizon),
         "research_scores": [{"day": str(day), "score": round(score * 100, 2)} for day, score in news],
     }
 
@@ -45,10 +50,13 @@ def forecast_request(facts):
         "messages": [
             {"role": "system", "content": (
                 "Predict cumulative relative percentage returns. Use historical returns as the main evidence. Compare the five-observation move, median return, and volatility before extrapolating. "
-                "Use the direction of recent research scores as weak supporting evidence. "
+                "Check research_evidence for the number of observations, differences in subsequent returns, "
+                "and correlation. Treat scores as weak evidence and do not infer specific events. "
+                "Compare the current regime with historical_patterns. Its median is a reference for the last "
+                "requested step. Wide ranges or few matches weaken that evidence. "
+                "When price history and research disagree, reduce the size of the move. "
                 "Estimate a return for every requested step in order. Step numbers are time indices, "
-                "never copy them into the result. For example a weak downward forecast might be "
-                '{"changes":[-0.1,-0.4,-0.5]}. A value of 0 means no change. '
+                "never copy them into the result. Each output is a signed percentage from the latest close. "
                 "Return only the JSON with your estimates."
             )},
             {"role": "user", "content": json.dumps(facts, ensure_ascii=False)},
@@ -56,7 +64,7 @@ def forecast_request(facts):
     }
 
 
-def forecast_path(response, last_close, horizon, research_scores=()):
+def forecast_path(response, last_close, horizon, research_adjustment=0., patterns=None):
     steps = anchor_steps(horizon)
     payload = json.loads(response)
     changes = payload.get("changes") if isinstance(payload, dict) else None
@@ -67,14 +75,18 @@ def forecast_path(response, last_close, horizon, research_scores=()):
         raise ValueError("Invalid forecast change")
     if changes == steps:
         raise ValueError("Model echoed the time indices")
-    research = [item["score"] for item in research_scores]
-    # A small fading adjustment keeps the research contribution visible even when the model
-    # returns the same price estimates for different scores.
-    research_change = 0.5 * sum(research) / (100 * len(research)) if research else 0.
+    pattern_weight = 0.
+    if patterns and patterns["matches"] >= 8 and patterns["median_distance"] <= 1:
+        positive_share = patterns["positive_outcome_share_percent"]
+        if positive_share >= 65 or positive_share <= 35:
+            pattern_weight = .2
     path = []
     previous_step, previous = 0, last_close
     for step, change in zip(steps, changes):
-        target = last_close * (1 + (change + research_change * .95 ** (step - 1)) / 100)
+        if pattern_weight:
+            reference = patterns["median_return_percent"] * step / horizon
+            change += pattern_weight * (reference - change)
+        target = last_close * (1 + (change + research_adjustment * .95 ** (step - 1)) / 100)
         path.extend(previous + (target - previous) * offset / (step - previous_step)
                     for offset in range(1, step - previous_step + 1))
         previous_step, previous = step, target

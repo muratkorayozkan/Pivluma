@@ -2,25 +2,25 @@
 
 Pivluma is a Windows desktop application in development for financial forecasting and market analysis.
 
-![Pivluma 0.18.0 showing statistical and llama.cpp projections from sample data, with the analyst alongside](docs/images/pivluma-dashboard.png)
+![Pivluma 0.19.0 showing the llama.cpp projection and a research analysis alongside sample prices](docs/images/pivluma-dashboard.png)
 
-## Download Pivluma 0.18.0
+## Download Pivluma 0.19.0
 
 | Windows x64 package | How to use it |
 | --- | --- |
-| [Setup EXE](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.18.0/Pivluma-0.18.0-Windows-Setup.exe) | Installs to `C:\Program Files\Pivluma` and adds a Start menu entry. The desktop shortcut is selected by default. The local model download is optional. Windows requests administrator approval for installation. |
-| [Portable ZIP](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.18.0/Pivluma-0.18.0-Windows.zip) | Extract the entire archive and run `Pivluma.exe`. Keep the neighboring `_internal` folder. |
-| [Standalone MSI](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.18.0/Pivluma-0.18.0-Windows-Setup.msi) | Install with Windows Installer. To add the local model, use Pivluma Settings after setup. |
+| [Setup EXE](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.19.0/Pivluma-0.19.0-Windows-Setup.exe) | Installs to `C:\Program Files\Pivluma` and adds a Start menu entry. The desktop shortcut is selected by default. The local model download is optional. Windows requests administrator approval for installation. |
+| [Portable ZIP](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.19.0/Pivluma-0.19.0-Windows.zip) | Extract the entire archive and run `Pivluma.exe`. Keep the neighboring `_internal` folder. |
+| [Standalone MSI](https://github.com/muratkorayozkan/Pivluma/releases/download/v0.19.0/Pivluma-0.19.0-Windows-Setup.msi) | Install with Windows Installer. To add the local model, use Pivluma Settings after setup. |
 
-The app opens on BTC/USD. Use the symbol picker to switch instruments or choose **Sample data** to explore offline. The dashboard and built-in analyst support English, Turkish, and Simplified Chinese. [Release notes](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.18.0)
+The app opens on BTC/USD. Use the symbol picker to switch instruments or choose **Sample data** to explore offline. The dashboard and built-in analyst support English, Turkish, and Simplified Chinese. [Release notes](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.19.0)
 
 ## How to read the chart
 
 | Chart element | Meaning |
 | --- | --- |
 | Solid line | Observed closing prices. |
-| Dashed line and shaded interval | Statistical forecast and empirical interval. The model selector compares the last-price baseline, linear trend, damped trend, smoothed level, and a robust return trend in walk-forward tests. The reported errors and XLSX export apply to this forecast. |
-| Dash-dot line | Optional llama.cpp projection. It uses recent price returns and passes available research scores to the model. Pivluma also applies a small, fading adjustment from those scores. The projection has no separate backtest. Dotted scenario bounds around the llama line reuse statistical error widths. |
+| Statistical reference | Walk-forward errors and XLSX export describe the statistical forecast. The chart displays observed prices and the optional llama.cpp projection. |
+| Dash-dot line | Optional llama.cpp projection. It uses recent price returns and passes available research scores to the model. Pivluma estimates a small, fading adjustment only when past matched returns support an association. The projection has no separate backtest. Dotted scenario bounds around the llama line reuse statistical error widths. |
 
 The screenshot uses synthetic prices and sample research scores. [Research inputs and source labels](#use-news-in-a-forecast)
 
@@ -34,15 +34,17 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pivluma.desktop
 ```
 
-The application starts maximized with standard Windows caption buttons and connects to BTC/USD. Press **Esc** to restore the window size or **F11** to toggle maximization. Choose **Sample data** to work with a synthetic series. The chart shows recent closing prices, the forecast, its empirical interval, and walk-forward error against a last-price baseline. Change **Forecast steps** to update the analysis. The maximum is 120 steps when there are enough observations for walk-forward evaluation. Choose **Export forecast XLSX** to save an Excel workbook with the active symbol, last observation date, selected model, error metrics, forecasts, and interval bounds. To use your own data, enter a symbol and choose **Import CSV**. **Load saved** lists the symbols stored in the Windows application data directory. Select one to reopen its series from SQLite. The command-line database can be selected independently with `--database`.
+The application starts maximized with standard Windows caption buttons and connects to BTC/USD. Press **Esc** to restore the window size or **F11** to toggle maximization. Choose **Sample data** to work with a synthetic series. The chart shows recent closes and, when the local model is installed and a projection is available, the llama.cpp line and its scenario band. Walk-forward errors appear in the statistical reference panel. Change **Forecast steps** to update the analysis. The maximum is 120 steps when there are enough observations for walk-forward evaluation. Choose **Export forecast XLSX** to save an Excel workbook with the active symbol, last observation date, selected model, error metrics, forecasts, and interval bounds. To use your own data, enter a symbol and choose **Import CSV**. **Load saved** lists the symbols stored in the Windows application data directory. Select one to reopen its series from SQLite. The command-line database can be selected independently with `--database`.
 
 Use the **Language** menu to switch between **EN · English**, **TR · Türkçe**, and **简体中文**. The selected language is remembered on this PC. Switching keeps the active prices and forecast horizon.
 
-The chart and analyst appear side by side in wide windows and in separate tabs in compact windows. Choose **Chart history** to change the number of closing prices displayed. Use the mouse wheel over the plot to zoom and drag the plot left or right to move through history. Hover over a point for details, or click to select it. Use **Reset chart** to return to the latest 120 observations and automatic price scaling. Layer toggles control observed closes, the 20-observation moving average, and the statistical forecast and interval. When a llama.cpp projection is available, its line and scenario band have separate controls. When the view moves away from the latest close, it shows historical data for that period. Click any historical or forecast point to inspect its value and, for a forecast, its interval. **Price axis** can set the lower and upper limits or restore automatic scaling.
+The chart and analyst appear side by side in wide windows and in separate tabs in compact windows. Choose **Chart history** to change the number of closing prices displayed. Use the mouse wheel over the plot to zoom and drag the plot left or right to move through history. Hover over a point for details, or click to select it. Use **Reset chart** to return to the latest 120 observations and automatic price scaling. Layer toggles control observed closes, the 20-observation moving average, and the llama.cpp line and scenario band. The chart follows the Windows animation preference. When the view moves away from the latest close, it shows historical data for that period. Click any historical or forecast point to inspect its value and, for a forecast, its interval. **Price axis** can set the lower and upper limits or restore automatic scaling.
 
 The upper-right controls open revision history, the about page, and settings. **Settings → Theme** includes a Windows system option and light and dark palettes. The theme is remembered on this PC. Revision history loads recent published GitHub release notes. **About** shows the running version and package type and lets you copy those details, check for updates, view the release notes, or report a problem.
 
 Open **Watchlist** beside the symbol picker to save the current symbol or reopen a saved one. The list is stored on this PC. Selecting a saved symbol updates the same chart, forecast, and analyst context used by the symbol picker. Use **Chart focus** or **Ctrl+Shift+F** to make more room for the chart. The price summary shows the change from the previous observation, which can be an earlier working day for FX.
+
+Use **Compare symbol** to overlay a saved symbol or a public Kraken/ECB symbol. The purple dashed line is rebased to the primary closing price at the first visible date shared by both series. The comparison does not change the inputs to forecasting. Launching Pivluma again brings the running window forward.
 
 [Interface research and design decisions](docs/interface-research.md)
 
@@ -68,9 +70,9 @@ python -m venv .venv
 .\scripts\build-windows.ps1 -Python .\.venv\Scripts\python.exe
 ```
 
-The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.18.0-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
+The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.19.0-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
 
-To build the themed Setup EXE and standalone MSI after building the portable package, run `./scripts/build-setup.ps1 -WixBin PATH_TO_WIX_BINARIES` with the WiX 3.14.1 binaries. This creates `dist/Pivluma-0.18.0-Windows-Setup.exe` and `dist/Pivluma-0.18.0-Windows-Setup.msi`.
+To build the themed Setup EXE and standalone MSI after building the portable package, run `./scripts/build-setup.ps1 -WixBin PATH_TO_WIX_BINARIES` with the WiX 3.14.1 binaries. This creates `dist/Pivluma-0.19.0-Windows-Setup.exe` and `dist/Pivluma-0.19.0-Windows-Setup.msi`.
 
 ## Connect live market data
 
@@ -94,7 +96,7 @@ For a supported live symbol the app requests daily news tone from [GDELT DOC 2.0
 
 The forecast matches each historical price observation to the previous calendar day's news score. After at least 20 matched returns it can compare a bounded, news-adjusted candidate with the existing price models in walk-forward evaluation. The data panel shows the source, number of matched observations, and whether the current prediction uses the news model. Missing news leaves price-based forecasting available. Ask the analyst about news for the current result.
 
-When llama.cpp is selected, the chart also generates a local-model projection. You can rerun it with **Run llama.cpp forecast**. It gives the model the latest returns and up to 14 recent research scores available before the last price date. The chart labels the research source and draws the local model in a dash-dot line. The model returns estimates at up to five steps. Pivluma applies a fading research adjustment of at most 0.5 percentage points at the first step and interpolates between the estimates. The shaded interval, walk-forward errors, and XLSX export describe the statistical forecast.
+When llama.cpp is selected, the chart also generates a local-model projection. You can rerun it with **Run llama.cpp forecast**. It gives the model the latest returns and up to 14 recent research scores available before the last price date. The chart labels the research source and draws the local model in a dash-dot line. The model returns estimates at up to five steps. Pivluma compares returns after positive and negative scores. A fading adjustment of at most 0.5 percentage points at the first step requires at least 20 matched observations, at least five positive and five negative cases, and an absolute historical correlation of at least 0.15. The model also receives a comparison with completed historical periods matched by 5- and 20-observation returns, volatility, and research tone where available. The analysis reports the number of matches and the range of subsequent outcomes. When at least eight close matches mostly point in one direction, the chart moves up to 20% of the way from the model estimate toward the historical median return. Research scores are aggregates. The **Analyze news** shortcut explains the evidence and its limits. The llama.cpp scenario band uses statistical error widths. The walk-forward errors and XLSX export describe the statistical reference.
 
 ## Ask the local analyst
 
@@ -133,3 +135,5 @@ The data and forecasting tests use the Python standard library. Run the same com
 ## Development
 
 Commit and push directly to `main`. Update this README when features, setup instructions, or project status change. For each release, update the application version, verify the tests and Windows build, then tag the verified commit on main as vMAJOR.MINOR.PATCH and publish GitHub release notes with the verified Windows x64 ZIP, Setup EXE, and MSI attached.
+
+The Pivluma wordmark uses Bricolage Grotesque. [Font license](pivluma/fonts/OFL.txt)
