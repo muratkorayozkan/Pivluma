@@ -374,6 +374,37 @@ class DashboardTests(unittest.TestCase):
             delete(window)
             self.application.processEvents()
 
+    def test_fullscreen_can_be_entered_and_exited(self):
+        window = Dashboard(Path("unused.sqlite3"))
+        try:
+            window.toggle_fullscreen()
+            self.assertTrue(window.isFullScreen())
+            window.exit_fullscreen()
+            self.assertFalse(window.isFullScreen())
+        finally:
+            window.close()
+            delete(window)
+            self.application.processEvents()
+
+    def test_cloud_mode_sends_calculated_facts_to_the_configured_gateway(self):
+        window = Dashboard(Path("unused.sqlite3"))
+        try:
+            window.set_cloud_access("https://example.com", "p" * 32)
+            window.set_analyst_model("cloud")
+            with patch.object(window.local_model, "start_cloud") as start:
+                window.ask_topic("What is the forecast?")
+            url, code, language, question, facts = start.call_args.args
+            self.assertEqual(url, "https://example.com")
+            self.assertEqual(code, "p" * 32)
+            self.assertEqual(facts["horizon"], window.horizon.value())
+            window.show_model_answer("cloud", "Test explanation")
+            self.assertIn("5 observations ahead", window.reply.text())
+            self.assertIn("Test explanation", window.reply.text())
+        finally:
+            window.close()
+            delete(window)
+            self.application.processEvents()
+
     def test_csv_import_persists_and_saved_series_loads(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)

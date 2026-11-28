@@ -6,7 +6,7 @@ from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout, QLabel,
+    QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout, QLabel, QLineEdit,
     QPlainTextEdit, QPushButton, QVBoxLayout,
 )
 
@@ -40,16 +40,26 @@ def settings_dialog(window):
     form.addRow(window.text("Theme"), themes)
     model = QComboBox()
     model.addItem(window.text("Built-in analyst"), "")
+    model.addItem(window.text("Cloud analyst"), "cloud")
     for name in MODELS:
         model.addItem(name, name)
     model.setCurrentIndex(max(0, model.findData(window.analyst_model)))
-    form.addRow(window.text("Local analyst model"), model)
+    form.addRow(window.text("Analyst model"), model)
+    cloud_url = QLineEdit(window.cloud_url)
+    cloud_code = QLineEdit(window.cloud_code)
+    cloud_code.setEchoMode(QLineEdit.EchoMode.Password)
+    form.addRow(window.text("Cloud server URL"), cloud_url)
+    form.addRow(window.text("Cloud access code"), cloud_code)
+    cloud_note = QLabel(window.text("Cloud mode sends your question and calculated facts to the configured server."))
+    cloud_note.setWordWrap(True)
+    form.addRow(cloud_note)
     help_text = QLabel(window.text("Ollama models must be installed and running on this PC."))
     help_text.setWordWrap(True)
     form.addRow(help_text)
     _buttons(dialog, form, QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
     if dialog.exec() == QDialog.DialogCode.Accepted:
         window.change_theme(themes.currentData())
+        window.set_cloud_access(cloud_url.text(), cloud_code.text())
         window.set_analyst_model(model.currentData())
 
 

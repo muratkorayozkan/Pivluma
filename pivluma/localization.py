@@ -1,6 +1,15 @@
 """User-facing desktop translations."""
 
 TURKISH = {
+    "Cloud analyst": "Bulut analisti",
+    "Analyst model": "Analist modeli",
+    "Cloud server URL": "Bulut sunucu adresi",
+    "Cloud access code": "Bulut erişim kodu",
+    "Cloud mode sends your question and calculated facts to the configured server.": "Bulut modu, sorunu ve hesaplanan değerleri yapılandırdığın sunucuya gönderir.",
+    "Enter a valid HTTPS server and cloud access code in Settings.": "Ayarlar’da geçerli bir HTTPS sunucusu ve bulut erişim kodu girin.",
+    "The cloud analyst did not accept the access code.": "Bulut analisti erişim kodunu kabul etmedi.",
+    "The cloud analyst daily limit has been reached.": "Bulut analistinin günlük kullanım sınırına ulaşıldı.",
+    "Cloud analyst unavailable. The built-in result is shown.": "Bulut analistine ulaşılamadı. Yerleşik analistin sonucu gösteriliyor.",
     "Research news": "Haberleri araştır",
     "Import news scores": "Haber skorlarını içe aktar",
     "No automatic news query for this symbol.": "Bu sembol için otomatik haber sorgusu yok.",

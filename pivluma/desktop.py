@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from PySide6.QtCore import QProcess, QSettings, QStandardPaths, Qt, QTimer
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFileDialog, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow,
     QPushButton, QScrollArea, QSpinBox, QSplitter, QStackedWidget, QTabWidget, QVBoxLayout, QWidget,
@@ -40,11 +40,15 @@ class Dashboard(QMainWindow):
         self.theme = "dark-blue"
         self.settings = None
         self.analyst_model = ""
+        self.cloud_url = ""
+        self.cloud_code = ""
         self.local_model = LocalModel(self)
         self.local_model.completed.connect(self.show_model_answer)
         self.localized = []
         self.market_message = "Twelve Data · Disconnected"
         self.setWindowIcon(QIcon(str(Path(__file__).with_name("pivluma.ico"))))
+        QShortcut(QKeySequence("F11"), self, activated=self.toggle_fullscreen)
+        QShortcut(QKeySequence("Escape"), self, activated=self.exit_fullscreen)
         self.setWindowTitle(f"Pivluma {__version__}")
         self.setMinimumSize(760, 680)
         self.resize(1280, 900)
@@ -289,6 +293,16 @@ class Dashboard(QMainWindow):
         self.quote_timer.start()
         self.show_sample()
         self.change_theme(self.theme)
+
+    def toggle_fullscreen(self):
+        if self.isFullScreen():
+            self.showNormal()
+        else:
+            self.showFullScreen()
+
+    def exit_fullscreen(self):
+        if self.isFullScreen():
+            self.showNormal()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -612,9 +626,16 @@ class Dashboard(QMainWindow):
             self.local_model.cancel()
             self.render_analyst(False)
 
+    def set_cloud_access(self, address, code):
+        self.local_model.cancel()
+        self.cloud_url = address.strip()
+        self.cloud_code = code.strip()
+        if self.settings is not None:
+            self.settings.setValue("cloud_url", self.cloud_url)
+
     def set_analyst_model(self, model):
         self.local_model.cancel()
-        self.analyst_model = model if model in MODELS else ""
+        self.analyst_model = model if model in (*MODELS, "cloud") else ""
         if self.settings is not None:
             self.settings.setValue("analyst_model", self.analyst_model)
 
@@ -670,13 +691,22 @@ class Dashboard(QMainWindow):
         }
         self.model_calculation = calculation
         self.reply.setText(calculation + "\n\n" + self.text("Local model is preparing an explanation…"))
-        self.local_model.start(self.analyst_model, self.language, question[:2000], facts)
+        if self.analyst_model == "cloud":
+            self.local_model.start_cloud(self.cloud_url, self.cloud_code, self.language, question[:2000], facts)
+        else:
+            self.local_model.start(self.analyst_model, self.language, question[:2000], facts)
 
     def show_model_answer(self, model, response):
-        explanation = (
-            self.text("Local model ({model})", model=model) + "\n" + response
-            if response else self.text("Local model unavailable. Check that Ollama and the selected model are running.")
-        )
+        if model == "cloud":
+            explanation = (
+                self.text("Cloud analyst") + "\n" + response
+                if response else self.text(self.local_model.cloud_error)
+            )
+        else:
+            explanation = (
+                self.text("Local model ({model})", model=model) + "\n" + response
+                if response else self.text("Local model unavailable. Check that Ollama and the selected model are running.")
+            )
         self.reply.setText(self.model_calculation + "\n\n" + explanation)
 
     def export_forecast(self):
@@ -751,6 +781,7 @@ def main():
     settings = QSettings("Pivluma", "Pivluma")
     window.settings = settings
     window.change_theme(settings.value("theme", "dark-blue", type=str))
+    window.set_cloud_access(settings.value("cloud_url", "", type=str), "")
     window.set_analyst_model(settings.value("analyst_model", "", type=str))
     application.styleHints().colorSchemeChanged.connect(
         lambda *_: window.change_theme(window.theme) if window.theme == "system" else None
@@ -770,7 +801,7 @@ def main():
         window.update_button.show()
         window.update_label.show()
         UpdateController(window, window.update_button, updates, settings)
-    window.show()
+    window.showFullScreen()
     return application.exec()
 
 
