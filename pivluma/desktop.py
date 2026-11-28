@@ -7,19 +7,19 @@ from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, QSettings, QStandardPaths, Qt, QTimer
+from PySide6.QtCore import QEasingCurve, QProcess, QPropertyAnimation, QSettings, QStandardPaths, Qt, QTimer
 from PySide6.QtGui import QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QFileDialog, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow,
-    QPushButton, QScrollArea, QSpinBox, QSplitter, QStackedWidget, QTabWidget, QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QComboBox, QFileDialog, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow,
+    QProgressBar, QPushButton, QScrollArea, QSpinBox, QSplitter, QStackedWidget, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from pivluma import __version__
 from pivluma.analyst import answer
-from pivluma.appearance import THEMES, colors_for, stylesheet
+from pivluma.appearance import THEMES, animations_enabled, colors_for, stylesheet
 from pivluma.chart import PriceChart
 from pivluma.data import PriceStore, read_prices, sample_prices
-from pivluma.dialogs import about_dialog, axis_dialog, history_dialog, settings_dialog
+from pivluma.dialogs import about_dialog, axis_dialog, history_dialog, settings_dialog, shortcuts_dialog
 from pivluma.export import write_forecast
 from pivluma.forecast import NEWS_MODEL, TRAINING_WINDOW, analyze
 from pivluma.local_model import MODELS, LocalModel
@@ -30,9 +30,20 @@ from pivluma.update_ui import UpdateController
 
 
 MAX_HORIZON = 120
+DEFAULT_SYMBOL = "BTC/USD"
+SHORTCUTS = (
+    ("F11", "Toggle maximized window", "toggle_fullscreen"),
+    ("Esc", "Restore window size", "exit_fullscreen"),
+    ("Ctrl+K", "Open symbol list", "open_symbol_list"),
+    ("Ctrl+Shift+S", "Export forecast XLSX", "export_forecast"),
+    ("Ctrl+,", "Settings", "open_settings"),
+    ("F1", "Keyboard shortcuts", "open_shortcuts"),
+)
 
 
 class Dashboard(QMainWindow):
+    shortcuts = SHORTCUTS
+
     def __init__(self, database: Path):
         super().__init__()
         self.database = database
@@ -47,8 +58,9 @@ class Dashboard(QMainWindow):
         self.localized = []
         self.market_message = "Twelve Data · Disconnected"
         self.setWindowIcon(QIcon(str(Path(__file__).with_name("pivluma.ico"))))
-        QShortcut(QKeySequence("F11"), self, activated=self.toggle_fullscreen)
-        QShortcut(QKeySequence("Escape"), self, activated=self.exit_fullscreen)
+        self.motion_enabled = animations_enabled()
+        for keys, _, method in SHORTCUTS:
+            QShortcut(QKeySequence(keys), self, activated=getattr(self, method))
         self.setWindowTitle(f"Pivluma {__version__}")
         self.setMinimumSize(760, 680)
         self.resize(1280, 900)
@@ -59,7 +71,7 @@ class Dashboard(QMainWindow):
         self.scroll_area.setWidget(page)
         self.setCentralWidget(self.scroll_area)
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(28, 22, 28, 22)
+        layout.setContentsMargins(22, 22, 22, 22)
         layout.setSpacing(10)
         title = QLabel("Pivluma")
         title.setObjectName("title")
@@ -70,12 +82,13 @@ class Dashboard(QMainWindow):
         self.language_picker = QComboBox()
         self.language_picker.addItem("EN · English", "en")
         self.language_picker.addItem("TR · Türkçe", "tr")
+        self.language_picker.setAccessibleName(self.text("Language"))
         self.language_picker.currentIndexChanged.connect(self.change_language)
         header.addWidget(self.language_picker)
         self.update_button = self.localized_button("Check for updates")
         self.update_button.hide()
-        for label, action in (("Revision history", history_dialog), ("About Pivluma", about_dialog),
-                              ("Settings", settings_dialog)):
+        for label, action in (("Revision history", history_dialog), ("About", about_dialog),
+                              ("Settings", settings_dialog), ("Shortcuts", shortcuts_dialog)):
             button = self.localized_button(label)
             button.clicked.connect(lambda checked=False, callback=action: callback(self))
             header.addWidget(button)
@@ -232,6 +245,13 @@ class Dashboard(QMainWindow):
         self.reply.setTextFormat(Qt.TextFormat.PlainText)
         self.reply.setWordWrap(True)
         self.reply.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        if self.motion_enabled:
+            self.reply_effect = QGraphicsOpacityEffect(self.reply)
+            self.reply_effect.setOpacity(1.0)
+            self.reply.setGraphicsEffect(self.reply_effect)
+            self.reply_transition = QPropertyAnimation(self.reply_effect, b"opacity", self)
+            self.reply_transition.setDuration(180)
+            self.reply_transition.setEasingCurve(QEasingCurve.Type.OutCubic)
         analyst_layout.addWidget(self.reply)
         analyst_layout.addStretch()
         self.chart.viewport_changed.connect(self.refresh_contextual_reply)
@@ -242,15 +262,15 @@ class Dashboard(QMainWindow):
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self.status)
         market_controls = QHBoxLayout()
-        connect = self.localized_button("Connect live")
-        connect.clicked.connect(self.connect_market)
-        disconnect = self.localized_button("Disconnect")
-        disconnect.clicked.connect(self.stop_market)
-        market_controls.addWidget(connect)
-        market_controls.addWidget(disconnect)
         self.market_status = QLabel("Twelve Data · Disconnected")
         self.market_status.setWordWrap(True)
         market_controls.addWidget(self.market_status, 1)
+        self.market_progress = QProgressBar()
+        self.market_progress.setRange(0, 0)
+        self.market_progress.setTextVisible(False)
+        self.market_progress.setFixedSize(84, 5)
+        self.market_progress.hide()
+        market_controls.addWidget(self.market_progress)
         market_section.addLayout(market_controls)
         self.quote_label = QLabel()
         self.quote_label.setTextFormat(Qt.TextFormat.PlainText)
@@ -295,14 +315,34 @@ class Dashboard(QMainWindow):
         self.change_theme(self.theme)
 
     def toggle_fullscreen(self):
-        if self.isFullScreen():
+        if self.isMaximized():
             self.showNormal()
         else:
-            self.showFullScreen()
+            self.showMaximized()
 
     def exit_fullscreen(self):
-        if self.isFullScreen():
+        if self.isMaximized():
             self.showNormal()
+
+    def open_symbol_list(self):
+        self.symbol.setFocus()
+        self.symbol_picker.showPopup()
+
+    def open_settings(self):
+        settings_dialog(self)
+
+    def open_shortcuts(self):
+        shortcuts_dialog(self)
+
+    def start_default_market(self):
+        self.select_live_symbol(self.symbol_picker.findData(DEFAULT_SYMBOL))
+
+    def animate_reply(self):
+        if self.motion_enabled and self.reply.isVisible():
+            self.reply_transition.stop()
+            self.reply_transition.setStartValue(.72)
+            self.reply_transition.setEndValue(1.)
+            self.reply_transition.start()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -390,6 +430,8 @@ class Dashboard(QMainWindow):
     def set_market_status(self, message):
         self.market_message = message
         self.market_status.setText(self.text(message))
+        busy = message.endswith(("Loading daily history", "Connecting quote stream", "Awaiting subscription"))
+        self.market_progress.setVisible(self.motion_enabled and busy)
 
     def set_history_warning(self, message):
         self.history_message = message
@@ -496,9 +538,8 @@ class Dashboard(QMainWindow):
             if symbol not in PUBLIC_SYMBOLS:
                 key = os.environ.get("TWELVE_DATA_API_KEY", "").strip()
                 if not key or not key.isascii() or not key.isprintable() or " " in key:
-                    raise ValueError(self.text(
-                        "Live access is not configured for this symbol. Choose a public crypto symbol."
-                    ))
+                    self.set_market_status("Twelve Data · Access is not configured on this PC.")
+                    raise ValueError(self.text("Select a Kraken symbol or configure Twelve Data access."))
             self.market.start(symbol, key)
         except ValueError as error:
             self.status.setText(str(error))
@@ -642,6 +683,7 @@ class Dashboard(QMainWindow):
     def ask_analyst(self):
         self.local_model.cancel()
         self.render_analyst(True)
+        self.animate_reply()
 
     def render_analyst(self, use_model):
         if not self.prices:
@@ -708,6 +750,7 @@ class Dashboard(QMainWindow):
                 if response else self.text("Local model unavailable. Check that Ollama and the selected model are running.")
             )
         self.reply.setText(self.model_calculation + "\n\n" + explanation)
+        self.animate_reply()
 
     def export_forecast(self):
         result = self.chart.result
@@ -801,7 +844,8 @@ def main():
         window.update_button.show()
         window.update_label.show()
         UpdateController(window, window.update_button, updates, settings)
-    window.showFullScreen()
+    window.showMaximized()
+    QTimer.singleShot(0, window, window.start_default_market)
     return application.exec()
 
 

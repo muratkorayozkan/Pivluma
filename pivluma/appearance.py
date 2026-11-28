@@ -1,6 +1,17 @@
 """Application and chart colors for the desktop theme settings."""
 
+import ctypes
+import sys
+
 from PySide6.QtCore import Qt
+
+
+def animations_enabled():
+    if sys.platform != "win32":
+        return True
+    enabled = ctypes.c_int()
+    result = ctypes.windll.user32.SystemParametersInfoW(0x1042, 0, ctypes.byref(enabled), 0)
+    return bool(result and enabled.value)
 
 
 THEMES = {
@@ -48,6 +59,8 @@ def stylesheet(colors):
         QPushButton, QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit {{
             background: {surface}; border: 1px solid {border}; border-radius: 6px; padding: 6px 10px;
         }}
+        QProgressBar {{ background: {surface}; border: 0; border-radius: 2px; }}
+        QProgressBar::chunk {{ background: {accent}; border-radius: 2px; }}
         QPushButton:hover, QPushButton:focus, QLineEdit:focus, QSpinBox:focus {{
             border-color: {accent};
         }}

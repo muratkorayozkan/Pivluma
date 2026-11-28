@@ -30,7 +30,7 @@ class MarketIntegrationTests(unittest.TestCase):
     def setUpClass(cls):
         cls.application = QApplication.instance() or QApplication([])
 
-    def test_rest_history_then_websocket_quote_and_disconnect(self):
+    def test_websocket_disconnect_falls_back_to_rest_quote(self):
         requests = []
         subscriptions = []
         histories = []
@@ -42,10 +42,14 @@ class MarketIntegrationTests(unittest.TestCase):
         class HistoryHandler(BaseHTTPRequestHandler):
             def do_GET(self):
                 requests.append((urlsplit(self.path), self.headers.get("Authorization")))
-                body = json.dumps({"values": [
-                    {"datetime": "2026-01-02", "close": "102"},
-                    {"datetime": "2026-01-01", "close": "101"},
-                ]}).encode()
+                if urlsplit(self.path).path == "/quote":
+                    data = {"symbol": "EUR/USD", "close": "1.24", "timestamp": 1700000060}
+                else:
+                    data = {"values": [
+                        {"datetime": "2026-01-02", "close": "102"},
+                        {"datetime": "2026-01-01", "close": "101"},
+                    ]}
+                body = json.dumps(data).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
@@ -85,22 +89,24 @@ class MarketIntegrationTests(unittest.TestCase):
 
             def receive_quote(price, timestamp):
                 quotes.append((price, timestamp))
-                peers[-1].close()
+                if len(quotes) == 1:
+                    peers[-1].close()
+                else:
+                    loop.quit()
 
             feed.quote.connect(receive_quote)
-            feed.stream_lost.connect(loop.quit)
             timeout = QTimer()
             timeout.setSingleShot(True)
             timeout.timeout.connect(loop.quit)
             cleanup.callback(timeout.stop)
             with patch.object(market, "HISTORY_URL", f"http://127.0.0.1:{http.server_port}/time_series"), patch.object(
                 market, "QUOTES_URL", f"ws://127.0.0.1:{server.serverPort()}/v1/quotes/price"
-            ):
+            ), patch.object(market, "REST_QUOTE_URL", f"http://127.0.0.1:{http.server_port}/quote"):
                 timeout.start(5000)
                 feed.start("EUR/USD", "test-key")
                 loop.exec()
 
-            self.assertEqual(len(requests), 1, statuses)
+            self.assertEqual(len(requests), 2, statuses)
             url, authorization = requests[0]
             self.assertEqual(url.path, "/time_series")
             self.assertEqual(parse_qs(url.query)["symbol"], ["EUR/USD"])
@@ -109,6 +115,13 @@ class MarketIntegrationTests(unittest.TestCase):
                 market.Price(date(2026, 1, 1), 101), market.Price(date(2026, 1, 2), 102)
             ])])
             self.assertEqual(subscriptions, [{"action": "subscribe", "params": {"symbols": "EUR/USD"}}])
-            self.assertEqual(quotes, [(1.23, datetime.fromtimestamp(1700000000, timezone.utc))])
-            self.assertIn("Disconnected", statuses[-1])
+            quote_url, authorization = requests[1]
+            self.assertEqual(quote_url.path, "/quote")
+            self.assertEqual(parse_qs(quote_url.query)["interval"], ["1min"])
+            self.assertEqual(authorization, "apikey test-key")
+            self.assertEqual(quotes, [
+                (1.23, datetime.fromtimestamp(1700000000, timezone.utc)),
+                (1.24, datetime.fromtimestamp(1700000060, timezone.utc)),
+            ])
+            self.assertIn("REST quote", statuses[-1])
             self.assertIsNone(feed.socket)

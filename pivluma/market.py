@@ -5,7 +5,7 @@ from datetime import date, datetime, timezone
 from math import isfinite
 
 from PySide6.QtCore import QObject, QTimer, QUrl, QUrlQuery, Signal
-from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
+from PySide6.QtNetwork import QAbstractSocket, QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from PySide6.QtWebSockets import QWebSocket
 
 from pivluma.data import Price
@@ -13,6 +13,7 @@ from pivluma.data import Price
 
 HISTORY_URL = "https://api.twelvedata.com/time_series"
 QUOTES_URL = "wss://ws.twelvedata.com/v1/quotes/price"
+REST_QUOTE_URL = "https://api.twelvedata.com/quote"
 KRAKEN_HISTORY_URL = "https://api.kraken.com/0/public/OHLC"
 KRAKEN_QUOTES_URL = "wss://ws.kraken.com/v2"
 
@@ -100,6 +101,9 @@ class MarketFeed(QObject):
         self.pending = None
         self.socket = None
         self.provider = "Twelve Data"
+        self.fallback_context = None
+        self.rest_timer = QTimer(self, interval=60000)
+        self.rest_timer.timeout.connect(self.poll_rest_quote)
         self.heartbeat = QTimer(self, interval=10000)
         self.heartbeat.timeout.connect(self.send_heartbeat)
         self.subscription_deadline = QTimer(self, interval=15000, singleShot=True)
@@ -111,6 +115,8 @@ class MarketFeed(QObject):
             reply.abort()
         socket, self.socket = self.socket, None
         self.heartbeat.stop()
+        self.rest_timer.stop()
+        self.fallback_context = None
         self.subscription_deadline.stop()
         if socket is not None:
             socket.abort()
@@ -147,6 +153,10 @@ class MarketFeed(QObject):
         if reply is not self.pending:
             return
         self.pending = None
+        status = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
+        if key is not None and status == 401:
+            self.report("Twelve Data · API key was rejected.")
+            return
         if reply.error() != QNetworkReply.NetworkError.NoError:
             message = "Twelve Data · History request failed. Check connection and account access."
             self.history_warning.emit(self.with_provider(message))
@@ -165,11 +175,12 @@ class MarketFeed(QObject):
         self.open_stream(symbol, key)
 
     def open_stream(self, symbol, key):
+        self.fallback_context = (symbol, key) if key is not None else None
         socket = QWebSocket(parent=self)
         self.socket = socket
         socket.connected.connect(lambda: self.subscribe(socket, symbol))
         socket.disconnected.connect(lambda: self.disconnected(socket))
-        socket.errorOccurred.connect(lambda _: self.disconnected(socket))
+        socket.errorOccurred.connect(lambda error: self.socket_error(socket, error))
         socket.textMessageReceived.connect(lambda message: self.on_message(socket, symbol, message))
         request = QNetworkRequest(QUrl(KRAKEN_QUOTES_URL if key is None else QUOTES_URL))
         if key is not None:
@@ -195,14 +206,81 @@ class MarketFeed(QObject):
         if socket is self.socket:
             self.end_stream("Disconnected.")
 
+    def socket_error(self, socket, error):
+        if socket is not self.socket:
+            return
+        if error == QAbstractSocket.SocketError.SslHandshakeFailedError:
+            reason = "Secure connection failed."
+        elif self.provider == "Twelve Data" and any(
+            code in socket.errorString() for code in ("401", "403")
+        ):
+            reason = "WebSocket access denied for this key or plan."
+        else:
+            reason = "Could not open the streaming connection."
+        self.end_stream(reason)
+
     def subscription_timeout(self):
         if self.socket is not None:
             self.end_stream("Quote subscription timed out.")
 
     def end_stream(self, reason):
+        fallback = self.fallback_context
         self.stop()
         self.stream_lost.emit()
-        self.report(f"Twelve Data · {reason} Select Connect live to retry.")
+        if fallback is not None:
+            self.fallback_context = fallback
+            self.report("Twelve Data · Streaming unavailable. Checking REST quote.")
+            self.rest_timer.start()
+            self.poll_rest_quote()
+        else:
+            self.report(f"Twelve Data · {reason} Choose the symbol again to retry.")
+
+    def poll_rest_quote(self):
+        if self.fallback_context is None or self.pending is not None:
+            return
+        symbol, key = self.fallback_context
+        url = QUrl(REST_QUOTE_URL)
+        query = QUrlQuery()
+        query.addQueryItem("symbol", symbol)
+        query.addQueryItem("interval", "1min")
+        url.setQuery(query)
+        request = QNetworkRequest(url)
+        request.setRawHeader(b"Authorization", f"apikey {key}".encode("ascii"))
+        request.setTransferTimeout(12000)
+        reply = self.network.get(request)
+        self.pending = reply
+        reply.finished.connect(lambda: self.finish_rest_quote(reply, symbol))
+
+    def finish_rest_quote(self, reply, symbol):
+        reply.deleteLater()
+        if reply is not self.pending:
+            return
+        self.pending = None
+        status = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
+        try:
+            payload = json.loads(bytes(reply.readAll()))
+            if isinstance(payload, dict) and payload.get("status") == "error":
+                status = payload.get("code", status)
+            if reply.error() != QNetworkReply.NetworkError.NoError or payload["symbol"] != symbol:
+                raise ValueError()
+            price = float(payload["close"])
+            if not isfinite(price) or price <= 0:
+                raise ValueError()
+            stamp = datetime.fromtimestamp(int(payload["timestamp"]), timezone.utc)
+        except (AttributeError, KeyError, OSError, OverflowError, TypeError, ValueError):
+            if str(status) in {"401", "403", "429"}:
+                self.rest_timer.stop()
+                self.fallback_context = None
+                message = "Twelve Data · REST quota reached." if str(status) == "429" else (
+                    "Twelve Data · REST quote access denied for this key or plan."
+                )
+            else:
+                message = "Twelve Data · REST quote unavailable. Retrying in one minute."
+            self.stream_lost.emit()
+            self.report(message)
+            return
+        self.report("Twelve Data · REST quote · One-minute bar")
+        self.quote.emit(price, stamp)
 
     def on_message(self, socket, symbol, message):
         if socket is not self.socket:

@@ -2,22 +2,32 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Product Id="*" Name="Pivluma" Language="1033" Version="$(var.Version)"
            Manufacturer="Pivluma" UpgradeCode="49F54CBF-2277-4A7D-8A9D-B14861F8A4F1">
-    <Package InstallerVersion="500" Compressed="yes" InstallScope="perUser" Platform="x64" />
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
     <MajorUpgrade DowngradeErrorMessage="A newer version of Pivluma is already installed." />
     <MediaTemplate EmbedCab="yes" />
     <Icon Id="PivlumaIcon" SourceFile="$(var.IconPath)" />
     <Property Id="ARPPRODUCTICON" Value="PivlumaIcon" />
+    <Property Id="DESKTOPSHORTCUT" Value="1" Secure="yes" />
+    <WixVariable Id="WixUIBannerBmp" Value="$(var.BannerPath)" />
+    <WixVariable Id="WixUIDialogBmp" Value="$(var.DialogPath)" />
     <Directory Id="TARGETDIR" Name="SourceDir">
-      <Directory Id="LocalAppDataFolder">
-        <Directory Id="LocalPrograms" Name="Programs">
-          <Directory Id="INSTALLFOLDER" Name="Pivluma" />
-        </Directory>
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="Pivluma" />
       </Directory>
       <Directory Id="ProgramMenuFolder">
         <Component Id="StartMenuShortcut" Guid="*">
           <Shortcut Id="PivlumaStartMenu" Name="Pivluma" Target="[INSTALLFOLDER]Pivluma.exe"
                     WorkingDirectory="INSTALLFOLDER" Icon="PivlumaIcon" />
-          <RegistryValue Root="HKCU" Key="Software\Pivluma\Setup" Name="Shortcut"
+          <RegistryValue Root="HKCU" Key="Software\Pivluma\Setup" Name="StartMenuShortcut"
+                         Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+      </Directory>
+      <Directory Id="DesktopFolder">
+        <Component Id="DesktopShortcut" Guid="*">
+          <Condition>DESKTOPSHORTCUT = "1"</Condition>
+          <Shortcut Id="PivlumaDesktop" Name="Pivluma" Target="[INSTALLFOLDER]Pivluma.exe"
+                    WorkingDirectory="INSTALLFOLDER" Icon="PivlumaIcon" />
+          <RegistryValue Root="HKCU" Key="Software\Pivluma\Setup" Name="DesktopShortcut"
                          Type="integer" Value="1" KeyPath="yes" />
         </Component>
       </Directory>
@@ -25,6 +35,50 @@
     <Feature Id="Pivluma" Title="Pivluma" Level="1">
       <ComponentGroupRef Id="ApplicationFiles" />
       <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
     </Feature>
+    <UI Id="PivlumaSetup">
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Segoe UI" Size="9" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Segoe UI" Size="12" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="Segoe UI" Size="10" Bold="yes" />
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="FilesInUse" />
+      <DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="PrepareDlg" />
+      <DialogRef Id="ProgressDlg" />
+      <DialogRef Id="ResumeDlg" />
+      <DialogRef Id="UserExit" />
+      <Dialog Id="PivlumaOptions" Width="370" Height="270" Title="Pivluma Setup">
+        <Control Id="Banner" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="yes" Text="WixUI_Bmp_Banner" />
+        <Control Id="Heading" Type="Text" X="16" Y="11" Width="260" Height="20" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Installation options" />
+        <Control Id="Location" Type="Text" X="20" Y="70" Width="328" Height="38" Text="Pivluma will be installed in [INSTALLFOLDER]." />
+        <Control Id="Desktop" Type="CheckBox" X="20" Y="116" Width="310" Height="20" Property="DESKTOPSHORTCUT"
+                 CheckBoxValue="1" Text="Create a desktop shortcut" />
+        <Control Id="Rule" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="Back">
+          <Publish Event="NewDialog" Value="WelcomeDlg">1</Publish>
+        </Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Next">
+          <Publish Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel">
+          <Publish Event="SpawnDialog" Value="CancelDlg">1</Publish>
+        </Control>
+      </Dialog>
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="PivlumaOptions">NOT Installed</Publish>
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg">Installed AND PATCH</Publish>
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="PivlumaOptions">NOT Installed</Publish>
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg">Installed AND NOT PATCH</Publish>
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg">Installed AND PATCH</Publish>
+      <Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg">1</Publish>
+      <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+      <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg">1</Publish>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999">1</Publish>
+      <Property Id="ARPNOMODIFY" Value="1" />
+    </UI>
+    <UIRef Id="WixUI_Common" />
   </Product>
 </Wix>

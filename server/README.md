@@ -9,4 +9,6 @@ Publish this container behind an HTTPS reverse proxy on a host you control. The 
 - Set `PIVLUMA_DAILY_PER_USER` and `PIVLUMA_DAILY_TOTAL` for UTC-day request limits. Defaults are 30 and 1000. Requests count against the limit once accepted, including upstream failures. `PIVLUMA_OPENAI_MODEL` defaults to `gpt-5-mini`.
 - Share the HTTPS gateway address with authorized users. In **Settings**, they choose **Cloud analyst** and enter the address and issued access code.
 
+With the secret configured in the runtime environment, run `python -m server.smoke` from the repository root to verify a real OpenAI response using synthetic data. The command prints only the outcome or HTTP status.
+
 The gateway sends only the question and calculated facts from the desktop request to OpenAI, with response storage disabled. The app does not send price CSV files, provider keys, or credentials for the user's machine. Do not log authorization headers or request bodies at the reverse proxy.

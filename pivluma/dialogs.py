@@ -89,6 +89,15 @@ def axis_dialog(window):
             window.chart.set_axis(minimum, maximum)
 
 
+def shortcuts_dialog(window):
+    dialog = _dialog(window, "Keyboard shortcuts")
+    form = QFormLayout(dialog)
+    for keys, label, _ in window.shortcuts:
+        form.addRow(QLabel(keys), QLabel(window.text(label)))
+    _buttons(dialog, form, QDialogButtonBox.StandardButton.Close)
+    dialog.exec()
+
+
 def about_dialog(window):
     dialog = _dialog(window, "About Pivluma")
     layout = QVBoxLayout(dialog)

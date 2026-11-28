@@ -374,13 +374,15 @@ class DashboardTests(unittest.TestCase):
             delete(window)
             self.application.processEvents()
 
-    def test_fullscreen_can_be_entered_and_exited(self):
+    def test_maximized_window_keeps_caption_controls(self):
         window = Dashboard(Path("unused.sqlite3"))
         try:
             window.toggle_fullscreen()
-            self.assertTrue(window.isFullScreen())
-            window.exit_fullscreen()
+            self.assertTrue(window.isMaximized())
             self.assertFalse(window.isFullScreen())
+            self.assertTrue(window.windowFlags() & Qt.WindowType.WindowCloseButtonHint)
+            window.exit_fullscreen()
+            self.assertFalse(window.isMaximized())
         finally:
             window.close()
             delete(window)
