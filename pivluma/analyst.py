@@ -5,7 +5,7 @@ from statistics import mean
 from typing import Sequence
 
 from pivluma.data import Price
-from pivluma.forecast import Analysis, TRAINING_WINDOW
+from pivluma.forecast import Analysis, NEWS_MODEL, TRAINING_WINDOW
 from pivluma.localization import translate
 
 
@@ -16,6 +16,14 @@ def answer(question: str, label: str, prices: Sequence[Price], result: Analysis,
     period = "–" if turkish else "to"
     context = f"{label} | {first.day} {period} {latest.day}"
     model = translate(language, result.model)
+    if words & {"news", "headlines", "sentiment", "haber", "haberler", "duygu"}:
+        if turkish:
+            detail = ("Son tahminde haber modeli seçildi." if result.model == NEWS_MODEL
+                      else "Son tahminde fiyat modeli seçildi.")
+            return f"{context}\nHaber tonu ve sonraki getiri için {result.news_pairs} eşleşme var. {detail}"
+        detail = ("The news model was selected for the current forecast." if result.model == NEWS_MODEL
+                  else "A price-only model was selected for the current forecast.")
+        return f"{context}\nThere are {result.news_pairs} matched news-tone and subsequent-return pairs. {detail}"
     if "ortalama" in words or {"moving", "average"} <= words or "sma" in words:
         closes = [price.close for price in prices[-TRAINING_WINDOW:]]
         average = mean(closes)

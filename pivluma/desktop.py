@@ -21,10 +21,11 @@ from pivluma.chart import PriceChart
 from pivluma.data import PriceStore, read_prices, sample_prices
 from pivluma.dialogs import about_dialog, axis_dialog, history_dialog, settings_dialog
 from pivluma.export import write_forecast
-from pivluma.forecast import TRAINING_WINDOW, analyze
+from pivluma.forecast import NEWS_MODEL, TRAINING_WINDOW, analyze
 from pivluma.local_model import MODELS, LocalModel
 from pivluma.localization import translate
-from pivluma.market import PUBLIC_SYMBOLS, MarketFeed
+from pivluma.market import OTHER_SYMBOLS, PUBLIC_SYMBOLS, MarketFeed
+from pivluma.news import NewsFeed, align_scores, read_news_scores
 from pivluma.update_ui import UpdateController
 
 
@@ -97,12 +98,7 @@ class Dashboard(QMainWindow):
         self.symbol_picker.setEditable(True)
         self.symbol_picker.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.symbol = self.symbol_picker.lineEdit()
-        instruments = {
-            **PUBLIC_SYMBOLS,
-            "AAPL": "Apple", "MSFT": "Microsoft", "NVDA": "NVIDIA", "TSLA": "Tesla",
-            "SPY": "SPDR S&P 500 ETF", "EUR/USD": "Euro / US dollar",
-            "USD/TRY": "US dollar / Turkish lira",
-        }
+        instruments = {**PUBLIC_SYMBOLS, **OTHER_SYMBOLS}
         for code, name in instruments.items():
             index = self.symbol_picker.count()
             self.symbol_picker.addItem(f"{self.text(name)} ({code})", code)
@@ -262,6 +258,23 @@ class Dashboard(QMainWindow):
         self.history_warning.hide()
         market_section.addWidget(self.history_warning)
         self.history_message = ""
+        self.news_scores = {}
+        self.news_source = ""
+        self.news_message = ""
+        self.news = NewsFeed(self)
+        self.news.status.connect(self.set_news_status)
+        self.news.loaded.connect(self.receive_news)
+        news_controls = QHBoxLayout()
+        fetch_news = self.localized_button("Research news")
+        fetch_news.clicked.connect(self.fetch_news)
+        news_controls.addWidget(fetch_news)
+        import_news = self.localized_button("Import news scores")
+        import_news.clicked.connect(self.import_news)
+        news_controls.addWidget(import_news)
+        self.news_status = QLabel()
+        self.news_status.setWordWrap(True)
+        news_controls.addWidget(self.news_status, 1)
+        market_section.addLayout(news_controls)
         self.last_quote = None
         self.stream_lost = True
         self.live_symbol = ""
@@ -350,6 +363,7 @@ class Dashboard(QMainWindow):
         self.chart.update()
         self.set_market_status(self.market_message)
         self.set_history_warning(self.history_message)
+        self.update_news_status()
         self.update_quote()
         self.update_summary()
         self.show_chart_point(self.chart.selected_index)
@@ -368,6 +382,62 @@ class Dashboard(QMainWindow):
         self.history_warning.setText(self.text(message))
         self.history_warning.setVisible(bool(message))
 
+    def set_news_status(self, message):
+        self.news_message = message
+        self.update_news_status()
+
+    def update_news_status(self):
+        if self.news_message:
+            message = self.text(self.news_message)
+        elif self.news_scores and self.chart.result:
+            result = self.chart.result
+            mode = self.text("News model selected" if result.model == NEWS_MODEL else "Price model selected")
+            message = self.text("{source} · {count} matched news/return pairs · {mode}",
+                                source=self.text(self.news_source), count=result.news_pairs, mode=mode)
+        else:
+            message = ""
+        self.news_status.setText(message)
+
+    def reset_news(self):
+        self.news.cancel()
+        self.news_scores = {}
+        self.news_source = ""
+        self.set_news_status("")
+
+    def fetch_news(self):
+        if not self.prices or not self.series_symbol:
+            self.set_news_status("Open a price series with a symbol before researching news.")
+            return
+        self.news.start(self.series_symbol)
+
+    def receive_news(self, symbol, scores):
+        if self.prices and symbol == self.series_symbol:
+            self.news_scores = scores
+            self.news_source = "GDELT news tone"
+            self.news_message = ""
+            self.refresh()
+
+    def import_news(self):
+        if not self.prices:
+            self.set_news_status("Open a price series before importing news scores.")
+            return
+        filename, _ = QFileDialog.getOpenFileName(
+            self, self.text("Import news scores"), "", self.text("CSV files (*.csv)")
+        )
+        if not filename:
+            return
+        try:
+            with Path(filename).open(encoding="utf-8-sig", newline="") as stream:
+                scores = read_news_scores(stream)
+        except (OSError, TypeError, ValueError) as error:
+            self.set_news_status("News CSV could not be read. Use date and tone columns.")
+            return
+        self.news.cancel()
+        self.news_scores = scores
+        self.news_source = "Imported news scores"
+        self.news_message = ""
+        self.refresh()
+
     def select_live_symbol(self, index):
         symbol = self.symbol_picker.itemData(index)
         if symbol:
@@ -376,6 +446,7 @@ class Dashboard(QMainWindow):
 
     def clear_analysis(self, symbol):
         self.local_model.cancel()
+        self.reset_news()
         self.series_source = ""
         self.series_symbol = symbol
         self.prices = []
@@ -430,6 +501,7 @@ class Dashboard(QMainWindow):
             self.status.setText(self.text("Twelve Data returned too few daily observations for a forecast."))
             return
         self.set_series(self.market.with_provider("Twelve Data daily history"), prices, symbol)
+        self.fetch_news()
 
     def receive_quote(self, price, timestamp):
         if self.last_quote is None or timestamp >= self.last_quote[1]:
@@ -509,6 +581,7 @@ class Dashboard(QMainWindow):
             self.status.setText(str(error))
 
     def set_series(self, label, prices, symbol=""):
+        self.reset_news()
         self.series_source = label
         self.series_symbol = symbol
         self.prices = prices
@@ -593,6 +666,7 @@ class Dashboard(QMainWindow):
             ],
             "strategy_mae": result.mae, "last_price_baseline_mae": result.baseline_mae,
             "backtest_origins": result.origins, "calculation": calculation,
+            "news_source": self.news_source, "matched_news_return_pairs": result.news_pairs,
         }
         self.model_calculation = calculation
         self.reply.setText(calculation + "\n\n" + self.text("Local model is preparing an explanation…"))
@@ -629,10 +703,12 @@ class Dashboard(QMainWindow):
             return
         self.local_model.cancel()
         closes = [price.close for price in self.prices]
-        result = analyze(closes, self.horizon.value())
+        news = align_scores(self.prices, self.news_scores) if self.news_scores else None
+        result = analyze(closes, self.horizon.value(), news)
         self.chart.history = closes
         self.chart.days = [price.day for price in self.prices]
         self.chart.result = result
+        self.update_news_status()
         self.chart.hover_index = None
         self.chart.select_index(None)
         self.update_summary()

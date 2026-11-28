@@ -16,12 +16,27 @@ QUOTES_URL = "wss://ws.twelvedata.com/v1/quotes/price"
 KRAKEN_HISTORY_URL = "https://api.kraken.com/0/public/OHLC"
 KRAKEN_QUOTES_URL = "wss://ws.kraken.com/v2"
 
+PUBLIC_ASSETS = {
+    "BTC": "Bitcoin", "ETH": "Ethereum", "SOL": "Solana", "XRP": "XRP",
+    "DOGE": "Dogecoin", "ADA": "Cardano", "AVAX": "Avalanche", "DOT": "Polkadot",
+    "LINK": "Chainlink", "LTC": "Litecoin", "BCH": "Bitcoin Cash", "XLM": "Stellar Lumens",
+    "UNI": "Uniswap", "ATOM": "Cosmos", "TRX": "TRON", "ETC": "Ethereum Classic",
+    "ALGO": "Algorand", "SUI": "Sui", "HBAR": "Hedera", "NEAR": "NEAR Protocol",
+    "AAVE": "Aave",
+}
 PUBLIC_SYMBOLS = {
-    "BTC/USD": "Bitcoin",
-    "ETH/USD": "Ethereum",
-    "SOL/USD": "Solana",
-    "XRP/USD": "XRP",
-    "DOGE/USD": "Dogecoin",
+    f"{base}/{quote}": name
+    for base, name in PUBLIC_ASSETS.items()
+    for quote in ("USD", "EUR")
+}
+OTHER_SYMBOLS = {
+    "AAPL": "Apple", "MSFT": "Microsoft", "NVDA": "NVIDIA", "TSLA": "Tesla",
+    "AMZN": "Amazon", "GOOGL": "Alphabet", "META": "Meta Platforms", "AMD": "AMD",
+    "NFLX": "Netflix", "JPM": "JPMorgan Chase", "V": "Visa", "WMT": "Walmart",
+    "SPY": "SPDR S&P 500 ETF", "QQQ": "Invesco QQQ", "DIA": "SPDR Dow Jones ETF",
+    "EUR/USD": "Euro / US dollar", "USD/TRY": "US dollar / Turkish lira",
+    "GBP/USD": "British pound / US dollar", "USD/JPY": "US dollar / Japanese yen",
+    "USD/CHF": "US dollar / Swiss franc", "AUD/USD": "Australian dollar / US dollar",
 }
 
 

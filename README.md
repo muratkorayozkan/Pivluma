@@ -6,7 +6,7 @@ Pivluma is a Windows desktop application in development for financial forecastin
 
 ## Current release
 
-[Pivluma 0.11.0](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.11.0) is the current release. Download the [portable Windows x64 ZIP](https://github.com/muratkorayozkan/Pivluma/releases/latest), extract it, and run Pivluma.exe.
+[Pivluma 0.12.0](https://github.com/muratkorayozkan/Pivluma/releases/tag/v0.12.0) is the current release. Download the [portable Windows x64 ZIP](https://github.com/muratkorayozkan/Pivluma/releases/latest), extract it, and run Pivluma.exe.
 
 The forecasting engine compares a last-price baseline, linear trend, damped trend, and exponentially smoothed level. At each origin it uses only completed prior forecasts to select a model, using recent errors at several lead times. The dashboard reports the selected model and compares the full selection strategy against the last-price baseline on the same walk-forward origins. Forecast intervals use empirical errors for each step.
 
@@ -51,19 +51,25 @@ python -m venv .venv
 .\scripts\build-windows.ps1 -Python .\.venv\Scripts\python.exe
 ```
 
-The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.11.0-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
+The script builds and smoke-tests `dist/Pivluma/Pivluma.exe`, then creates `dist/Pivluma-0.12.0-Windows.zip` and prints its SHA-256 hash. Extract the entire archive and open `Pivluma.exe` inside the extracted folder. Keep the neighboring `_internal` folder with the executable. The build is unsigned and includes its own Python runtime.
 
 
 ## Connect live market data
 
 Choose an instrument from the **Symbol** drop-down to switch the live chart automatically, or type a single code and press Enter. **Connect live** opens the drop-down when the field is empty. Forecasting and export become available once sufficient history for the selected symbol arrives.
 
-**BTC/USD**, **ETH/USD**, **SOL/USD**, **XRP/USD**, and **DOGE/USD** connect directly to Kraken public market data without an account. Other symbols use Twelve Data if the installation already supplies `TWELVE_DATA_API_KEY` in the process environment and the account permits display and streaming for that symbol. The app never prompts for a key.
+The symbol picker includes 42 Kraken crypto pairs against USD or EUR, including BTC, ETH, ADA, AVAX, LINK, LTC, and other assets. These connect directly to Kraken public market data without an account. The picker also lists more stocks, ETFs, and FX pairs. Other symbols use Twelve Data if the installation already supplies `TWELVE_DATA_API_KEY` in the process environment and the account permits display and streaming for that symbol. The app never prompts for a key.
 
 The chart uses daily REST history. If daily history is unavailable, Pivluma still tries the quote subscription and displays the history error separately from the stream state. The WebSocket quote is displayed separately in the Windows local time zone, with its UTC offset and marked as the last received quote after two minutes. Disconnecting keeps the latest quote visible and labels it as the last received quote. Switching to a sample or CSV series closes the live connection and clears the quote. The WebSocket connection and subscription acknowledgement have a combined 15-second deadline. If the provider rejects the subscription or the deadline expires, the socket closes and **Connect live** can retry. Once the subscription is accepted, the app can wait for a quote while the market is quiet. Sample data and CSV analysis work offline.
 
 Provider references: [Kraken daily history](https://docs.kraken.com/api/docs/rest-api/get-ohlc-data), [Kraken ticker stream](https://docs.kraken.com/api/docs/websocket-v2/ticker), [REST API](https://twelvedata.com/docs), [WebSocket API](https://twelvedata.com/docs/websocket/websocket-getting-started), and [plans](https://twelvedata.com/pricing).
 
+
+## Use news in a forecast
+
+For a supported live symbol the app requests daily news tone from [GDELT DOC 2.0](https://blog.gdeltproject.org/gdelt-doc-2-0-api-debuts/). Select **Research news** to retry or to start research from a saved price series. **Import news scores** also accepts a UTF-8 CSV with `date,tone` columns, ISO dates, and numeric tone scores from −100 to +100. Provide one score per day and use scores available at that time.
+
+The forecast matches each historical price observation to the previous calendar day's news score. After at least 20 matched returns it can compare a bounded, news-adjusted candidate with the existing price models in walk-forward evaluation. The data panel shows the source, number of matched observations, and whether the current prediction uses the news model. Missing news leaves price-based forecasting available. Ask the analyst about news for the current result.
 
 ## Ask the local analyst
 

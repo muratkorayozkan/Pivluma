@@ -18,11 +18,14 @@ class Analysis:
     model: str = "adaptive"
     # (lead, number of observations used when choosing the final model)
     validation: tuple[tuple[int, int], ...] = ()
+    news_pairs: int = 0
 
 
 TRAINING_WINDOW = 20
 MIN_TRAINING = 8
 SCORE_WINDOW = 32
+NEWS_MODEL = "News-adjusted baseline"
+MIN_NEWS_PAIRS = 20
 MODEL_NAMES = ("Last-price baseline", "Linear trend", "Damped trend", "Smoothed level")
 
 
@@ -42,7 +45,18 @@ def _paths(prices: Sequence[float], horizon: int):
     )
 
 
-def analyze(prices: Sequence[float], horizon: int) -> Analysis:
+def _news_path(latest, tone, pairs, horizon):
+    if tone is None or len(pairs) < MIN_NEWS_PAIRS:
+        return (latest,) * horizon
+    # Ridge shrinkage reduces sensitivity to a handful of extreme news days.
+    gradient = sum(signal * response for signal, response in pairs) / (
+        2.0 + sum(signal * signal for signal, _ in pairs)
+    )
+    shock = max(-.02, min(.02, gradient * tone))
+    return tuple(latest * (1 + shock * .85 ** step) for step in range(horizon))
+
+
+def analyze(prices: Sequence[float], horizon: int, news: Sequence[float | None] | None = None) -> Analysis:
     """Choose each origin's model using only already-observed forecast errors."""
     if not isinstance(horizon, int) or isinstance(horizon, bool) or horizon < 1:
         raise ValueError("Horizon must be a positive integer.")
@@ -51,14 +65,27 @@ def analyze(prices: Sequence[float], horizon: int) -> Analysis:
     if any(not isfinite(price) or price <= 0 for price in prices):
         raise ValueError("Prices must be finite and positive.")
 
+    if news is not None and (len(news) != len(prices) or any(
+        value is not None and (not isfinite(value) or abs(value) > 1) for value in news
+    )):
+        raise ValueError("Invalid aligned news scores.")
+    names = MODEL_NAMES + (NEWS_MODEL,) if news is not None else MODEL_NAMES
+    news_pairs = deque(maxlen=90)
+
     leads = sorted({1, max(1, horizon // 4), max(1, horizon // 2), horizon})
-    scores = [[deque(maxlen=SCORE_WINDOW) for _ in leads] for _ in MODEL_NAMES]
+    scores = [[deque(maxlen=SCORE_WINDOW) for _ in leads] for _ in names]
     pending = {}
     errors = [[] for _ in range(horizon)]
     baseline_errors = []
     final_origin = len(prices)
     for origin in range(MIN_TRAINING, final_origin + 1):
         realized = prices[origin - 1]
+        if news is not None and origin == MIN_TRAINING:
+            for index in range(origin - 2):
+                if news[index] is not None:
+                    news_pairs.append((news[index], prices[index + 1] / prices[index] - 1))
+        if news is not None and news[origin - 2] is not None:
+            news_pairs.append((news[origin - 2], realized / prices[origin - 2] - 1))
         for lead_index, lead in enumerate(leads):
             matured = pending.get(origin - lead)
             if matured is not None:
@@ -67,6 +94,8 @@ def analyze(prices: Sequence[float], horizon: int) -> Analysis:
         pending.pop(origin - horizon, None)
 
         paths = _paths(prices[max(0, origin - TRAINING_WINDOW):origin], horizon)
+        if news is not None:
+            paths += (_news_path(realized, news[origin - 1], news_pairs, horizon),)
         pending[origin] = paths
         if origin < TRAINING_WINDOW:
             continue
@@ -76,7 +105,10 @@ def analyze(prices: Sequence[float], horizon: int) -> Analysis:
             samples = [mean(history) for history in scores[model] if len(history) >= 3]
             return mean(samples) if samples else 0.
 
-        selected = min(range(len(MODEL_NAMES)), key=score)
+        available = len(names)
+        if news is not None and (news[origin - 1] is None or len(news_pairs) < MIN_NEWS_PAIRS):
+            available -= 1
+        selected = min(range(available), key=score)
         if origin <= final_origin - horizon:
             actual = prices[origin:origin + horizon]
             for step, (prediction, observed) in enumerate(zip(paths[selected], actual)):
@@ -93,6 +125,7 @@ def analyze(prices: Sequence[float], horizon: int) -> Analysis:
         mae=mean(error for step_errors in errors for error in step_errors),
         baseline_mae=mean(baseline_errors),
         origins=len(errors[0]),
-        model=MODEL_NAMES[selected],
+        model=names[selected],
+        news_pairs=len(news_pairs),
         validation=tuple((lead, len(scores[selected][index])) for index, lead in enumerate(leads)),
     )
