@@ -8,10 +8,10 @@ from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, QSettings, QStandardPaths, Qt, QTimer, Signal
-from PySide6.QtGui import QIcon, QKeySequence, QShortcut
+from PySide6.QtCore import QProcess, QSettings, QStandardPaths, QStringListModel, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QFont, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QFileDialog, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu,
+    QApplication, QCheckBox, QComboBox, QCompleter, QFileDialog, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu,
     QProgressBar, QPushButton, QScrollArea, QSpinBox, QStyle, QSplitter, QStackedWidget, QTabWidget, QVBoxLayout, QWidget,
 )
 
@@ -23,6 +23,8 @@ from pivluma.data import PriceStore, read_prices, sample_prices
 from pivluma.dialogs import about_dialog, axis_dialog, history_dialog, settings_dialog, shortcuts_dialog
 from pivluma.export import write_forecast
 from pivluma.forecast import NEWS_MODEL, TRAINING_WINDOW, analyze
+from pivluma.lab import ForecastStore
+from pivluma.lab_dialog import ForecastLab
 from pivluma.llama_forecast import FORECAST_TASK, forecast_input, forecast_path
 from pivluma.local_assets import ready
 from pivluma.local_model import LOCAL_MODEL, LocalModel
@@ -32,6 +34,7 @@ from pivluma.news import NewsFeed, align_scores, read_news_scores
 from pivluma.patterns import historical_patterns
 from pivluma.research import research_evidence, summarize_research
 from pivluma.single_instance import SingleInstance
+from pivluma.symbol_catalog import SymbolCatalog
 from pivluma.update_ui import UpdateController
 
 
@@ -90,12 +93,10 @@ class Dashboard(QMainWindow):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(22, 22, 22, 22)
         layout.setSpacing(10)
-        self.compact_title = QLabel("Pivluma")
-        self.compact_title.setObjectName("title")
+        self.compact_title = self.brand()
         layout.addWidget(self.compact_title)
         header = QHBoxLayout()
-        self.header_title = QLabel("Pivluma")
-        self.header_title.setObjectName("title")
+        self.header_title = self.brand()
         header.addWidget(self.header_title)
         header.addStretch()
         self.language_label = self.localized_label("Language")
@@ -131,7 +132,10 @@ class Dashboard(QMainWindow):
         market_section = QVBoxLayout()
         market_heading = self.localized_label("Market data")
         market_heading.setProperty("sectionTitle", True)
-        market_section.addWidget(market_heading)
+        category_row = QHBoxLayout()
+        category_row.addWidget(market_heading)
+        category_row.addStretch()
+        market_section.addLayout(category_row)
         layout.addLayout(market_section)
         toolbar = QHBoxLayout()
         market_section.addLayout(toolbar)
@@ -141,25 +145,28 @@ class Dashboard(QMainWindow):
         self.symbol_picker.setMinimumContentsLength(12)
         self.symbol_picker.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.symbol = self.symbol_picker.lineEdit()
-        groups = (
+        self.symbol_groups = (
             ("Cryptocurrency", PUBLIC_SYMBOLS),
             ("Foreign exchange", FX_SYMBOLS),
             ("Stocks", {code: title for code, title in OTHER_SYMBOLS.items() if code not in ("SPY", "QQQ", "DIA")}),
             ("ETFs", {code: OTHER_SYMBOLS[code] for code in ("SPY", "QQQ", "DIA")}),
         )
-        for category, instruments in groups:
-            index = self.symbol_picker.count()
-            self.symbol_picker.addItem(self.text(category))
-            self.symbol_picker.model().item(index).setEnabled(False)
-            self.localize(lambda text, index=index: self.symbol_picker.setItemText(index, text), category)
-            for code, name in instruments.items():
-                index = self.symbol_picker.count()
-                self.symbol_picker.addItem(f"{self.text(name)} ({code})", code)
-                self.localize(
-                    lambda text, index=index, code=code: self.symbol_picker.setItemText(index, f"{text} ({code})"),
-                    name,
-                )
-        self.symbol_picker.setCurrentIndex(-1)
+        self.symbol_category = QComboBox()
+        for name in ("All symbols", *(name for name, _ in self.symbol_groups)):
+            index = self.symbol_category.count()
+            self.symbol_category.addItem(self.text(name))
+            self.localize(lambda text, index=index: self.symbol_category.setItemText(index, text), name)
+        self.localize(self.symbol_category.setAccessibleName, "Symbol category")
+        self.stock_catalog = SymbolCatalog(self)
+        self.stock_catalog.loaded.connect(self.update_catalog)
+        self.completion_model = QStringListModel(self)
+        self.symbol_completer = QCompleter(self.completion_model, self)
+        self.symbol_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self.symbol_picker.setCompleter(self.symbol_completer)
+        self.symbol_completer.activated[str].connect(self.open_watch_symbol)
+        self.symbol_category.currentIndexChanged.connect(self.populate_symbols)
+        category_row.addWidget(self.symbol_category)
+        self.populate_symbols()
         self.symbol_picker.activated.connect(self.select_live_symbol)
         self.symbol.returnPressed.connect(self.connect_market)
         self.localize(self.symbol.setPlaceholderText, "Symbol")
@@ -186,6 +193,9 @@ class Dashboard(QMainWindow):
         self.horizon.valueChanged.connect(self.refresh)
         forecast_controls.addWidget(self.horizon)
         forecast_controls.addStretch()
+        lab = self.localized_button("Forecast Lab")
+        lab.clicked.connect(self.open_forecast_lab)
+        forecast_controls.addWidget(lab)
         self.dataset = QLabel()
         self.dataset.setTextFormat(Qt.TextFormat.PlainText)
         self.dataset.setWordWrap(True)
@@ -398,6 +408,60 @@ class Dashboard(QMainWindow):
         if self.isMaximized():
             self.showNormal()
 
+    def brand(self):
+        group = QWidget()
+        layout = QHBoxLayout(group)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(7)
+        title = QLabel("Pivluma")
+        title.setObjectName("title")
+        layout.addWidget(title)
+        logo = QLabel()
+        logo.setPixmap(self.windowIcon().pixmap(29, 29))
+        layout.addWidget(logo, alignment=Qt.AlignmentFlag.AlignVCenter)
+        layout.addStretch()
+        return group
+
+    def populate_symbols(self):
+        current = self.symbol.text()
+        section = self.symbol_category.currentIndex()
+        groups = self.symbol_groups if not section else self.symbol_groups[section - 1:section]
+        self.symbol_picker.clear()
+        for category, instruments in groups:
+            if not section:
+                self.symbol_picker.addItem(self.text(category))
+                heading = self.symbol_picker.model().item(self.symbol_picker.count() - 1)
+                bold = QFont(heading.font())
+                bold.setBold(True)
+                heading.setFont(bold)
+                heading.setBackground(QColor(self.chart.colors[3] if hasattr(self, "chart") else "#40526c"))
+                heading.setEnabled(False)
+            for code, name in instruments.items():
+                self.symbol_picker.addItem(f"{self.text(name)} ({code})", code)
+        self.symbol_picker.setCurrentIndex(-1)
+        self.symbol.setText(current)
+        self.completion_model.setStringList(sorted({code for _, instruments in groups for code in instruments}))
+        if section and groups[0][0] in ("Stocks", "ETFs"):
+            self.stock_catalog.load(groups[0][0])
+
+    def update_catalog(self, category, symbols):
+        section = self.symbol_category.currentIndex()
+        if section and self.symbol_groups[section - 1][0] == category:
+            combined = set(self.completion_model.stringList()) | set(symbols)
+            self.completion_model.setStringList(sorted(combined))
+
+    def open_forecast_lab(self):
+        if not self.prices or self.chart.result is None:
+            self.status.setText(self.text("Price history is needed for analysis."))
+            return
+        self.cancel_model_request()
+        self.local_model.stop_engine()
+        dialog = ForecastLab(self)
+        try:
+            dialog.exec()
+        finally:
+            dialog.deleteLater()
+
     def activate_existing(self):
         if self.isMinimized():
             self.setWindowState(self.windowState() & ~Qt.WindowState.WindowMinimized)
@@ -513,6 +577,7 @@ class Dashboard(QMainWindow):
         self.setStyleSheet(stylesheet(colors))
         self.chart.colors = colors
         self.chart.update()
+        self.populate_symbols()
         self.render_update_status()
         if self.settings is not None:
             self.settings.setValue("theme", self.theme)
@@ -546,6 +611,7 @@ class Dashboard(QMainWindow):
         for setter, message in self.localized:
             setter(self.text(message))
         self.symbol.setText(symbol)
+        self.populate_symbols()
         if self.workspace_tabs.count() == 2:
             self.workspace_tabs.setTabText(0, self.text("Chart"))
             self.workspace_tabs.setTabText(1, self.text("Local analyst"))
@@ -1112,6 +1178,14 @@ class Dashboard(QMainWindow):
             self.llama_message = "llama.cpp forecast unavailable."
         else:
             self.llama_message = "Dash-dot line · llama.cpp forecast · {source}. Dotted limits reuse the statistical error widths."
+            if self.series_symbol and self.database.is_absolute():
+                try:
+                    with closing(sqlite3.connect(self.database)) as connection:
+                        store = ForecastStore(connection)
+                        store.save(self.series_symbol, self.prices[-1].day, "llama.cpp", self.chart.llama_forecast)
+                        store.reconcile(self.series_symbol, self.prices)
+                except (sqlite3.Error, ValueError):
+                    self.status.setText(self.text("Forecast journal unavailable."))
             self.chart.reveal()
             self.show_chart_point(self.chart.selected_index)
         self.update_llama_status()
